@@ -36,6 +36,7 @@ fn test_logging() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("--command")
         .arg("docker-compose run web rspec {file}");
     cmd.arg("--files").arg("**/*.rb");
+    cmd.arg("--coverage").arg("tests/fixtures/transmute.json");
     cmd.arg("--log-level").arg("info");
 
     cmd.assert()

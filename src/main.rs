@@ -2,6 +2,8 @@ use clap::Parser;
 use log::info;
 use std::process::exit;
 
+mod coverage;
+
 /// transmute: Automatically change your code and make the tests fail. If don't, we will raise it for you.
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -31,6 +33,12 @@ fn main() {
 
     info!("Starting transmute.");
     info!("Loading coverage {}..", args.coverage);
+    let coverage = coverage::Coverage::load(&args.coverage);
+
+    for item in coverage.find("/app/app/models/user.rb", 1).iter() {
+        info!("spec found: {}", item)
+    }
+
     info!("Loading files {}..", args.files);
 
     exit(0);
