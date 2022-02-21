@@ -20,6 +20,10 @@ struct Args {
     #[clap(long, default_value = "transmute.json")]
     coverage: String,
 
+    /// fail fast
+    #[clap(long)]
+    fail_fast: bool,
+
     /// log_level
     #[clap(long, default_value = "info")]
     log_level: String,
