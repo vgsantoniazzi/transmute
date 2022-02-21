@@ -1,8 +1,10 @@
 use clap::Parser;
-use log::info;
+use log::{info, warn};
 use std::process::exit;
 
 mod coverage;
+mod files;
+mod runner;
 
 /// transmute: Automatically change your code and make the tests fail. If don't, we will raise it for you.
 #[derive(Parser, Debug)]
@@ -36,14 +38,32 @@ fn main() {
     );
 
     info!("Starting transmute.");
-    info!("Loading coverage {}..", args.coverage);
+
     let coverage = coverage::Coverage::load(&args.coverage);
+    let files = files::File::load(&args.files);
 
-    for item in coverage.find("/app/app/models/user.rb", 1).iter() {
-        info!("spec found: {}", item)
+    info!("Running transmute for files. It can take several minutes..");
+    for file in files.iter() {
+        'mutate: for mutable in file.mutable_items.iter() {
+            mutable.transmute(&file.path);
+
+            for spec_file in coverage.find(&file.path, mutable.line_number).iter() {
+                let exit_code = runner::run(&args.command, spec_file);
+
+                if exit_code != 0 {
+                    continue 'mutate;
+                }
+            }
+
+            warn!(
+                "Changing '{}' on line '{}' did not break the specs. Consider adding a spec",
+                file.path, mutable.line_number
+            );
+            if args.fail_fast {
+                exit(0);
+            }
+        }
     }
-
-    info!("Loading files {}..", args.files);
 
     exit(0);
 }
