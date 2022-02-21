@@ -10,11 +10,11 @@ fn test_err_when_file_not_found() {
 #[test]
 fn test_find() {
     let cov = coverage::Coverage::load("tests/fixtures/transmute.json");
-    let mut result = Vec::new();
-    result.push("/app/spec/models/user_spec.rb");
-    assert_eq!(cov.find("/app/app/models/user.rb", 1), result);
+    assert_eq!(
+        cov.find("tests/fixtures/app/user.rb", 1),
+        ["tests/fixtures/specs/user_spec.rb"]
+    );
 }
-
 
 #[test]
 fn test_find_not_found_return_empty() {

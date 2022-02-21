@@ -1,4 +1,4 @@
-use log::{info, warn};
+use log::{info, trace, warn};
 use serde_json::Value;
 use std::fs;
 
@@ -8,15 +8,16 @@ pub struct Coverage {
 
 impl Coverage {
     pub fn load(path: &str) -> Coverage {
+        info!("Loading coverage {}..", path);
         let file = fs::read_to_string(path).expect(&format!("Unable to read file: {}", path));
         return Coverage {
             data: serde_json::from_str(&file).expect("Unable to parse"),
         };
     }
 
-    pub fn find(self, file: &str, line: u16) -> Vec<String> {
+    pub fn find(&self, file: &str, line: u16) -> Vec<String> {
         let accessor = format!("{}:{}", file, line);
-        info!("loading specs specs for {}", accessor);
+        trace!("loading specs specs for {}", accessor);
 
         let mut result = Vec::new();
         for item in self.data[accessor.clone()]
