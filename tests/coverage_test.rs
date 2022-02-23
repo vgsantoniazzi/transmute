@@ -11,7 +11,7 @@ fn test_err_when_file_not_found() {
 fn test_find() {
     let cov = coverage::Coverage::load("tests/fixtures/transmute.json");
     assert_eq!(
-        cov.find("tests/fixtures/app/user.rb", 1),
+        cov.find("tests/fixtures/app/user.rb", 3),
         ["tests/fixtures/specs/user_spec.rb"]
     );
 }

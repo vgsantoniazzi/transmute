@@ -410,6 +410,7 @@ dependencies = [
  "glob",
  "log",
  "predicates",
+ "regex",
  "serde_json",
 ]
 

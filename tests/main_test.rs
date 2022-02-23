@@ -33,14 +33,13 @@ fn test_required_command() -> Result<(), Box<dyn std::error::Error>> {
 fn test_logging() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("transmute")?;
 
-    cmd.arg("--command")
-        .arg("docker-compose run web rspec {file}");
+    cmd.arg("--command").arg("docker-compose run web rspec {file}");
     cmd.arg("--files").arg("**/*.rb");
     cmd.arg("--coverage").arg("tests/fixtures/transmute.json");
     cmd.arg("--log-level").arg("info");
 
     cmd.assert()
-        .success()
+        .failure()
         .stderr(predicate::str::contains("Starting transmute"));
 
     Ok(())

@@ -7,9 +7,10 @@ pub struct Coverage {
 }
 
 impl Coverage {
-    pub fn load(path: &str) -> Coverage {
-        info!("Loading coverage {}..", path);
-        let file = fs::read_to_string(path).expect(&format!("Unable to read file: {}", path));
+    pub fn load(file_path: &str) -> Coverage {
+        info!("Loading coverage {}..", file_path);
+        let file =
+            fs::read_to_string(file_path).expect(&format!("Unable to read file: {}", file_path));
         return Coverage {
             data: serde_json::from_str(&file).expect("Unable to parse"),
         };
