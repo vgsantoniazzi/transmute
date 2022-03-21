@@ -3,7 +3,7 @@ use log::{info, warn};
 use std::process::exit;
 
 mod coverage;
-mod files;
+mod file;
 mod runner;
 
 /// transmute: Automatically change your code and make the tests fail. If don't, we will raise it for you.
@@ -40,9 +40,11 @@ fn main() {
     info!("Starting transmute.");
 
     let coverage = coverage::Coverage::load(&args.coverage);
-    let files = files::File::load(&args.files);
+    let files = file::File::load(&args.files);
+    let mut failed = false;
 
     info!("Running transmute for files. It can take several minutes..");
+
     for file in files.iter() {
         'mutate: for mutable in file.mutable_items.iter() {
             mutable.transmute(&file.path);
@@ -51,6 +53,8 @@ fn main() {
                 let exit_code = runner::run(&args.command, spec_file);
 
                 if exit_code != 0 {
+                    mutable.undo(&file.path);
+                    failed = true;
                     continue 'mutate;
                 }
             }
@@ -59,11 +63,13 @@ fn main() {
                 "Changing '{}' on line '{}' did not break the specs. Consider adding a spec",
                 file.path, mutable.line_number
             );
+
+            mutable.undo(&file.path);
+
             if args.fail_fast {
-                exit(0);
+                exit(1);
             }
         }
     }
-
-    exit(0);
+    exit(if failed { 1 } else { 0 });
 }

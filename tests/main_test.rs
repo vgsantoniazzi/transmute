@@ -40,7 +40,7 @@ fn test_logging() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("--log-level").arg("info");
 
     cmd.assert()
-        .success()
+        .failure()
         .stderr(predicate::str::contains("Starting transmute"));
 
     Ok(())

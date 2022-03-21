@@ -1,9 +1,9 @@
-#[path = "../src/files/mod.rs"]
-mod files;
+#[path = "../src/file/mod.rs"]
+mod file;
 
 #[test]
 fn test_load_all_rb_files() {
-    let files: Vec<String> = files::File::load("**/*.rb")
+    let files: Vec<String> = file::File::load("**/*.rb")
         .into_iter()
         .map(|f| f.path)
         .collect();
