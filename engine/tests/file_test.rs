@@ -12,8 +12,9 @@ fn test_load_all_rb_files() {
         files,
         [
             "tests/fixtures/app/user.rb",
-            "tests/fixtures/specs/user_error_spec.rb",
-            "tests/fixtures/specs/user_spec.rb"
+            "tests/fixtures/spec/spec_helper.rb",
+            "tests/fixtures/spec/user_error_spec.rb",
+            "tests/fixtures/spec/user_spec.rb"
         ]
     );
 }
