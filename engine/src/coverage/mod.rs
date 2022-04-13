@@ -17,7 +17,8 @@ impl Coverage {
     }
 
     pub fn find(&self, file: &str, line: u16) -> Vec<String> {
-        let accessor = format!("{}:{}", file, line);
+        let current_dir = std::env::current_dir().unwrap().into_os_string().into_string().unwrap();
+        let accessor = format!("{}/{}:{}", current_dir, file, line);
         trace!("loading specs specs for {}", accessor);
 
         let mut result = Vec::new();

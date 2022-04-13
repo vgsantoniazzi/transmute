@@ -12,7 +12,7 @@ fn test_find() {
     let cov = coverage::Coverage::load("tests/fixtures/transmute.json");
     assert_eq!(
         cov.find("tests/fixtures/app/user.rb", 3),
-        ["tests/fixtures/specs/user_spec.rb"]
+        ["./spec/user_spec.rb"]
     );
 }
 
