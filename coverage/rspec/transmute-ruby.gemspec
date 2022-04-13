@@ -3,7 +3,7 @@
 require_relative 'lib/transmute/version'
 
 Gem::Specification.new do |spec|
-  spec.name          = 'transmute'
+  spec.name          = 'transmute-ruby'
   spec.version       = Transmute::VERSION
   spec.authors       = ['Victor Antoniazzi']
   spec.email         = ['vgsantoniazzi@gmail.com']
