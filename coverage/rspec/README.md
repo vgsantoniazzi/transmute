@@ -7,7 +7,7 @@ Ruby gem to help you to generate the reverse-coverage relationship between code 
 Add this line to your application's Gemfile:
 
 ```ruby
-gem "transmute"
+gem "transmute-ruby"
 ```
 
 And then execute:
@@ -16,7 +16,7 @@ And then execute:
 
 Or install it yourself as:
 
-    $ gem install transmute
+    $ gem install transmute-ruby
 
 ## Usage
 
