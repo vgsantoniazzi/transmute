@@ -5,6 +5,7 @@ use std::process::exit;
 mod coverage;
 mod file;
 mod runner;
+mod analytics;
 
 /// transmute: Automatically change your code and make the tests fail. If don't, we will raise it for you.
 #[derive(Parser, Debug)]
@@ -41,6 +42,7 @@ fn main() {
 
     let coverage = coverage::Coverage::load(&args.coverage);
     let files = file::File::load(&args.files);
+    let mut analytics = analytics::AnalyticsResult::start(files.len().try_into().unwrap());
     let mut failed = false;
 
     info!("Running transmute for files. It can take several minutes..");
@@ -53,6 +55,7 @@ fn main() {
                 let (exit_code, stdout) = runner::run(&args.command, spec_file);
 
                 trace!("{}", stdout);
+                analytics.add(&file.path, mutable, exit_code, stdout);
 
                 if exit_code != 0 {
                     mutable.undo(&file.path);
