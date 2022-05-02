@@ -6,9 +6,10 @@ use std::path::Path;
 
 mod language;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MutableItem {
     pub line_number: u16,
+    pub implementation: String,
     pub content: String,
     pub replace: String,
 }
