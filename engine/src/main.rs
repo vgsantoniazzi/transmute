@@ -6,6 +6,7 @@ mod coverage;
 mod file;
 mod runner;
 mod analytics;
+mod formatter;
 
 /// transmute: Automatically change your code and make the tests fail. If don't, we will raise it for you.
 #[derive(Parser, Debug)]
@@ -76,5 +77,8 @@ fn main() {
             }
         }
     }
+
+    formatter::generate(&analytics);
+
     exit(if failed { 1 } else { 0 });
 }

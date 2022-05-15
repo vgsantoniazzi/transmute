@@ -6,15 +6,15 @@ RSpec.configure do |config|
   config.filter_run_excluding broken: true
 
   config.before(:suite) do
-    Transmute.instance.start
+    Transmute.instance.start if ENV["COVERAGE"]
   end
 
   config.around do |example|
     example.run
-    Transmute.instance.add_coverage(example)
+    Transmute.instance.add_coverage(example) if ENV["COVERAGE"]
   end
 
   config.after(:suite) do
-    Transmute.instance.store!
+    Transmute.instance.store! if ENV["COVERAGE"]
   end
 end
