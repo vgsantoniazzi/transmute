@@ -1,30 +1,201 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <link href='http://fonts.googleapis.com/css?family=Roboto' rel='stylesheet' type='text/css'>
     <style>
-      body {
-        background: rgb(204,204,204);
-      }
+     body {
+       font-family: 'Roboto', sans-serif;
+     }
 
-      page[size="A4"] {
-        background: white;
-        width: 21cm;
-        height: 29.7cm;
-        display: block;
-        margin: 0 auto;
-        margin-bottom: 0.5cm;
-        box-shadow: 0 0 0.5cm rgba(0,0,0,0.5);
-      }
+     .navbar {
+       overflow: hidden;
+       background-color: #333;
+       top: 0;
+       left: 0;
+       width: 100%;
+     }
 
-      @media print {
-        body, page[size="A4"] {
-          margin: 0;
-          box-shadow: 0;
-        }
-      }
+     .navbar a {
+       float: left;
+       display: block;
+       color: #f2f2f2;
+       text-align: center;
+       padding: 20px 24px;
+       text-decoration: none;
+       font-size: 20px;
+     }
+
+     .row {
+       display: flex;
+       margin: 50px;
+     }
+
+     .cards {
+       display: flex;
+       justify-content: space-between;
+     }
+
+     .info {
+       flex: 50%;
+     }
+
+     .title {
+       top: 0;
+       padding-top: 50px;
+       font-size: 20px;
+       text-align: center;
+     }
+
+     .details {
+       font-size: 40px;
+       text-align: center;
+       color: #8FD14F;
+     }
+
+     .analytics {
+       background-color: #555555;
+       color: white;
+       margin: 2%;
+       flex: 0 1 24%;
+       padding-bottom: 5%;
+       padding-top: 5%;
+     }
+
+     .button {
+       background-color: #555555;
+       border: none;
+       color: white;
+       padding: 15px 32px;
+       text-align: center;
+       text-decoration: none;
+       display: inline-block;
+       font-size: 16px;
+     }
+
+     .collapsible {
+       background-color: #eee;
+       color: #444;
+       cursor: pointer;
+       padding: 18px;
+       width: 100%;
+       border: none;
+       text-align: left;
+       outline: none;
+       font-size: 15px;
+     }
+
+     .active, .collapsible:hover {
+       background-color: #ccc;
+     }
+
+     .content {
+       padding: 18px 18px;
+       display: none;
+       overflow: hidden;
+       font-size: 18px;
+     }
+
     </style>
   </head>
   <body>
+    <div class="navbar">
+      <a> Transmute </a>
+      <a target="_blank" href="mailto:vgsantoniazzi@gmail.con" style="float: right">contact</a>
+      <a target="_blank" href="https://github.com/vgsantoniazzi/transmute" style="float: right">github</a>
+    </div>
 
+    <div class="row">
+      <div class="info" style="font-size: 60px">Results for Velocity</div>
+      <div class="info" style="font-size: 30px">
+        <p>Transmute is a tool that performs mutation tests against your codebase.</p>
+
+        <p>It will change your code and make the tests fail. If don't, we will raise it for you.</p>
+
+        <a class="button" href="https://github.com/vgsantoniazzi/transmute" target="_blank" style="font-size: 25px" >Learn More</a>
+      </div>
+    </div>
+
+    <div class="cards">
+      <div class="analytics">
+        <p class="title">Files</p>
+        <p class="details">{{ analytics.files_count }}</p>
+      </div>
+      <div class="analytics">
+        <p class="title">Mutations</p>
+        <p class="details">{{ analytics.mutations | length }}</p>
+      </div>
+      <div class="analytics">
+        <p class="title">Failures</p>
+        <p class="details" style="color: #F24726">{{ analytics.mutations | filter(attribute="exit_code", value=0) | length }}</p>
+      </div>
+    </div>
+
+    <div class="navbar">
+      <a> Individual Results </a>
+      <a style="float: right" onclick="collapseAll()">collapse_all</a>
+      <a style="float: right" onclick="expandAll()">expand_all</a>
+    </div>
+
+    </br>
+
+    {% for file_path, mutations in analytics.mutations | group_by(attribute="file_path") %}
+      <div>
+        <button type="button" class="collapsible">{{ file_path }}<span style="float: right">{{ mutations | length }} mutations</span></button>
+        <div class="content">
+          {% for mutation in mutations %}
+            <div>
+              <code>{{ mutation.item.line_number }} | {{ mutation.item.implementation }} {% if mutation.exit_code == 0 %} 🚩 {% else %} ✅ {% endif %} - (<label style="text-decoration: line-through">{{mutation.item.content}}</label> {{ mutation.item.replace }})</code>
+              <p></p>
+              <code style="font-size: 14px; white-space: pre; color: {% if mutation.exit_code == 0 %} green {% else %} red {% endif %}">
+{{ mutation.stdout }}
+              </code>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
   </body>
+  <script>
+   var coll = document.getElementsByClassName("collapsible");
+   var i;
+
+   for (i = 0; i < coll.length; i++) {
+     coll[i].addEventListener("click", function() {
+       this.classList.toggle("active");
+       var content = this.nextElementSibling;
+       if (content.style.display === "block") {
+         content.style.display = "none";
+       } else {
+         content.style.display = "block";
+       }
+     });
+   }
+
+   function expandAll() {
+     const boxes = document.getElementsByClassName('collapsible');
+
+     for (const box of boxes) {
+       box.classList.add('active');
+     }
+
+     var contents = document.querySelectorAll('div .content');
+     for (const content of contents) {
+       content.style.display = "block";
+     }
+   }
+
+   function collapseAll() {
+     const boxes = document.getElementsByClassName('collapsible');
+
+     for (const box of boxes) {
+       box.classList.remove('active');
+     }
+
+     var contents = document.querySelectorAll('div .content');
+     for (const content of contents) {
+       content.style.display = "none";
+     }
+   }
+
+  </script>
 </html>

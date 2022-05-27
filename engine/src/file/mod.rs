@@ -3,10 +3,11 @@ use log::{info, trace};
 use std::io::Write;
 use std::io::{self, BufRead};
 use std::path::Path;
+use serde::{Serialize};
 
 mod language;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MutableItem {
     pub line_number: u16,
     pub implementation: String,

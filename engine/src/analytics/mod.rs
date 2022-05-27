@@ -1,6 +1,7 @@
 use crate::file::MutableItem;
+use serde::{Serialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct MutationResult {
     pub file_path: String,
     pub item: MutableItem,
@@ -8,7 +9,7 @@ pub struct MutationResult {
     pub stdout: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct AnalyticsResult {
     pub files_count: i32,
     pub mutations: Vec<MutationResult>,
