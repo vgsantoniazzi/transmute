@@ -30,6 +30,7 @@ pub fn find_all(file_path: &str) -> Vec<MutableItem> {
             let (content, replace) = item;
             mutations.push(MutableItem {
                 line_number: line_counter,
+                implementation: line_content.to_string(),
                 content: content.to_string(),
                 replace: replace.to_string(),
             })

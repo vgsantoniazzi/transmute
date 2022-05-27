@@ -1,10 +1,12 @@
 use clap::Parser;
-use log::{info, warn};
+use log::{info, warn, trace};
 use std::process::exit;
 
 mod coverage;
 mod file;
 mod runner;
+mod analytics;
+mod formatter;
 
 /// transmute: Automatically change your code and make the tests fail. If don't, we will raise it for you.
 #[derive(Parser, Debug)]
@@ -41,6 +43,7 @@ fn main() {
 
     let coverage = coverage::Coverage::load(&args.coverage);
     let files = file::File::load(&args.files);
+    let mut analytics = analytics::AnalyticsResult::start(files.len().try_into().unwrap());
     let mut failed = false;
 
     info!("Running transmute for files. It can take several minutes..");
@@ -50,7 +53,10 @@ fn main() {
             mutable.transmute(&file.path);
 
             for spec_file in coverage.find(&file.path, mutable.line_number).iter() {
-                let exit_code = runner::run(&args.command, spec_file);
+                let (exit_code, stdout) = runner::run(&args.command, spec_file);
+
+                trace!("{}", stdout);
+                analytics.add(&file.path, mutable, exit_code, stdout);
 
                 if exit_code != 0 {
                     mutable.undo(&file.path);
@@ -71,5 +77,8 @@ fn main() {
             }
         }
     }
+
+    formatter::generate(&analytics);
+
     exit(if failed { 1 } else { 0 });
 }

@@ -1,7 +1,7 @@
 use log::trace;
 use std::process::Command;
 
-pub fn run(command: &str, spec_file: &str) -> i32 {
+pub fn run(command: &str, spec_file: &str) -> (i32, String) {
     let built_command = str::replace(command, "{file}", spec_file);
 
     let chunks: Vec<&str> = built_command.split_whitespace().collect();
@@ -13,8 +13,10 @@ pub fn run(command: &str, spec_file: &str) -> i32 {
         .output()
         .expect("failed run specs");
 
+    let stdout = String::from_utf8(output.stdout).unwrap().lines().map(|line| format!("{}\n", line)).collect::<String>();
+
     match output.status.code() {
-        Some(code) => return code,
-        None => return 0,
+        Some(code) => return (code, stdout),
+        None => return (0, stdout),
     }
 }
