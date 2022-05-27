@@ -1,12 +1,12 @@
 use clap::Parser;
-use log::{info, warn, trace};
+use log::{info, trace, warn};
 use std::process::exit;
 
+mod analytics;
 mod coverage;
 mod file;
-mod runner;
-mod analytics;
 mod formatter;
+mod runner;
 
 /// transmute: Automatically change your code and make the tests fail. If don't, we will raise it for you.
 #[derive(Parser, Debug)]

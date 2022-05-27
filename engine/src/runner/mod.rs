@@ -13,7 +13,11 @@ pub fn run(command: &str, spec_file: &str) -> (i32, String) {
         .output()
         .expect("failed run specs");
 
-    let stdout = String::from_utf8(output.stdout).unwrap().lines().map(|line| format!("{}\n", line)).collect::<String>();
+    let stdout = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| format!("{}\n", line))
+        .collect::<String>();
 
     match output.status.code() {
         Some(code) => return (code, stdout),
