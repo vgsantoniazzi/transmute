@@ -26,16 +26,16 @@ require "transmute"
 
 RSpec.configure do |config|
   config.before(:suite) do
-    Transmute.instance.start
+    Transmute.start if ENV["COVERAGE"]
   end
 
   config.around do |example|
     example.run
-    Transmute.instance.add_coverage(example)
+    Transmute.add_coverage(example) if ENV["COVERAGE"]
   end
 
   config.after(:suite) do
-    Transmute.instance.store!
+    Transmute.store! if ENV["COVERAGE"]
   end
 end
 ```

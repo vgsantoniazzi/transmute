@@ -15,6 +15,18 @@ class Transmute
 
   class << self
     attr_reader :instance
+
+    def start
+      instance.start
+    end
+
+    def add_coverage(example)
+      self.instance.add_coverage(example)
+    end
+
+    def store!
+      self.instance.store!
+    end
   end
 
   def start
@@ -43,7 +55,7 @@ class Transmute
   end
 
   def store!
-    File.write('transmute.json', JSON.dump(data))
+    File.write('transmute.json', JSON.pretty_generate(data))
   end
 
   private
