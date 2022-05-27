@@ -1,9 +1,9 @@
 use glob::glob;
 use log::{info, trace};
+use serde::Serialize;
 use std::io::Write;
 use std::io::{self, BufRead};
 use std::path::Path;
-use serde::{Serialize};
 
 mod language;
 

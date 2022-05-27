@@ -1,6 +1,6 @@
+use std::fs;
 use tera::Context;
 use tera::Tera;
-use std::fs;
 
 use crate::analytics::AnalyticsResult;
 
