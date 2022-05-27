@@ -20,18 +20,16 @@ The key features of transmute are:
   Instead of running all the specs, we will run only the required specs.
   This is good to provide a quick feedback-loop.
 
-* **Insights**:
-
-  If the tests didn't fail, we will provide the information that you need
-  to write a new tests case.
+* **Insights**: If the tests didn't fail, we will provide the information that you need to write a new tests case.
 
 ## Getting Started
 
 ```sh
 $ transmute \
-  --files "**/*[\!_spec].rb" \
-  --coverage ".transmute.json" \
+  --files "app/models/**/*.rb" \
+  --coverage "transmute.json" \
   --command "rspec {file}" \
+  --formatter "html" \
   --log-level "trace"
 ```
 
@@ -68,9 +66,10 @@ cargo test
 
 ```sh
 $ cargo run -- \
-  --files "**/*[\!_spec].rb" \
-  --coverage "tests/fixtures/transmute.json" \
+  --files "tests/fixtures/app/**/*.rb" \
+  --coverage "transmute.json" \
   --command "rspec {file}" \
+  --formatter "html" \
   --log-level "trace"
 ```
 
