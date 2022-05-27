@@ -57,7 +57,7 @@ fn find_mutable_items(string: &str) -> Vec<(String, String)> {
         items.push((
             result.to_string(),
             format!(
-                r#"{:?}"#,
+                r#"{}"#,
                 OPERATOR_CHARSET.iter().find(|&&x| x != result).unwrap()
             ),
         ));
@@ -67,7 +67,7 @@ fn find_mutable_items(string: &str) -> Vec<(String, String)> {
         items.push((
             result.to_string(),
             format!(
-                r#"{:?}"#,
+                r#"{}"#,
                 EQ_OPERATOR_CHARSET.iter().find(|&&x| x != result).unwrap()
             ),
         ));
