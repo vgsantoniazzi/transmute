@@ -31,6 +31,10 @@ struct Args {
     /// log_level
     #[clap(long, default_value = "info")]
     log_level: String,
+
+    /// formatter
+    #[clap(long, default_value = "json")]
+    formatter: String,
 }
 
 fn main() {
@@ -78,7 +82,7 @@ fn main() {
         }
     }
 
-    formatter::generate(&analytics);
+    formatter::generate(&analytics, args.formatter);
 
     exit(if failed { 1 } else { 0 });
 }
