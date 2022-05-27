@@ -1,5 +1,6 @@
 require_relative "../../../../coverage/rspec/lib/transmute"
 require_relative "../app/user"
+require_relative "../app/app"
 require "rspec"
 
 RSpec.configure do |config|
