@@ -1,11 +1,11 @@
 use glob::glob;
-use log::{info, trace};
+use log::{info, trace, warn};
 use serde::Serialize;
 use std::io::Write;
 use std::io::{self, BufRead};
 use std::path::Path;
 
-mod language;
+mod ruby;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MutableItem {
@@ -31,10 +31,21 @@ impl File {
             trace!("Found '{}'", file_path);
             files.push(File {
                 path: file_path.clone(),
-                mutable_items: language::find_mutations(file_path),
+                mutable_items: File::find_mutations(file_path),
             });
         }
         return files;
+    }
+
+    pub fn find_mutations(file_path: String) -> Vec<MutableItem> {
+        let signature: Vec<&str> = file_path.split(".").collect();
+        match signature[signature.len() - 1] {
+            "rb" => ruby::find_all(&file_path),
+            _ => {
+                warn!("File '{}' is not supported. Skipping.", file_path);
+                Vec::new()
+            }
+        }
     }
 }
 
