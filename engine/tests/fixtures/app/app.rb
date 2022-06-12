@@ -1,6 +1,7 @@
-class App
-  attr_accessor :name
-  def initialize(name = "transmute")
-    @name = name
+class App < Object
+  attr_accessor :attr
+  def initialize(name = "transmute::main")
+    @attr ||= {}
+    @attr[:name] = name
   end
 end
