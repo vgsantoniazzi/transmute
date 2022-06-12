@@ -10,13 +10,6 @@ static NUMBER_CHARSET: &str = "1234567890";
 static OPERATOR_CHARSET: [&str; 6] = [">", "<", "<=", ">=", "==", "!="];
 static EQ_OPERATOR_CHARSET: [&str; 2] = ["==", "!="];
 
-pub fn find_mutations(file_path: String) -> Vec<MutableItem> {
-    let signature: Vec<&str> = file_path.split(".").collect();
-    match signature[signature.len() - 1] {
-        _ => find_all(&file_path),
-    }
-}
-
 pub fn find_all(file_path: &str) -> Vec<MutableItem> {
     trace!("searching all mutable items for file {}", file_path);
 
