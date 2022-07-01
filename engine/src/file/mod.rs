@@ -51,12 +51,9 @@ impl File {
 
 impl MutableItem {
     pub fn transmute(&self, file_path: &str) {
-        trace!(
+        info!(
             "Changing '{}' by '{}' on {}:{}",
-            self.content,
-            self.replace,
-            file_path,
-            self.line_number
+            self.content, self.replace, file_path, self.line_number
         );
 
         self.change_content(file_path, true);
