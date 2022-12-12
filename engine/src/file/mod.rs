@@ -26,21 +26,41 @@ impl File {
         info!("Loading files {}..", files_paths);
         let mut files: Vec<File> = Vec::new();
 
-        for file in glob(files_paths).expect("Failed to read glob pattern") {
+        let pattern = File::extract_glob_pattern(files_paths);
+        let line_number = File::extract_line_number(files_paths);
+
+        for file in glob(pattern).expect("Failed to read glob pattern") {
             let file_path = String::from(file.unwrap().display().to_string());
             trace!("Found '{}'", file_path);
             files.push(File {
                 path: file_path.clone(),
-                mutable_items: File::find_mutations(file_path),
+                mutable_items: File::find_mutations(file_path, line_number),
             });
         }
         return files;
     }
 
-    pub fn find_mutations(file_path: String) -> Vec<MutableItem> {
+    pub fn extract_glob_pattern(path: &str) -> &str {
+        let splitted: Vec<&str> = path.split(":").collect();
+        return splitted.first().unwrap();
+    }
+
+    pub fn extract_line_number(path: &str) -> u16 {
+        let splitted: Vec<&str> = path.split(":").collect();
+
+        if splitted.len() == 1 {
+            return 0;
+        } else {
+            let line_number = splitted.last().unwrap().parse::<u16>().unwrap();
+            info!("Running only against line {}", line_number);
+            return line_number;
+        }
+    }
+
+    pub fn find_mutations(file_path: String, line_number: u16) -> Vec<MutableItem> {
         let signature: Vec<&str> = file_path.split(".").collect();
         match signature[signature.len() - 1] {
-            "rb" => ruby::find_all(&file_path),
+            "rb" => ruby::find_all(&file_path, line_number),
             _ => {
                 warn!("File '{}' is not supported. Skipping.", file_path);
                 Vec::new()
