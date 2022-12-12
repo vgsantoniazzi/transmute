@@ -53,30 +53,25 @@ git clone git@github.com:vgsantoniazzi/transmute.git
 ##### Compile
 
 ```
-cargo build
+make build
 ```
 
 ##### Run tests
 
 ```
-cargo test
+make test
 ```
 
 ##### Run with our dummy project
 
 ```sh
-$ cargo run -- \
-  --files "tests/fixtures/app/**/*.rb" \
-  --coverage "transmute.json" \
-  --command "rspec {file}" \
-  --formatter "html" \
-  --log-level "trace"
+make run.dummy
 ```
 
 ##### Format
 
 ```
-cargo fmt
+make format
 ```
 
 [Follow github guides for forking a project](https://guides.github.com/activities/forking/)
