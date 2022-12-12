@@ -30,6 +30,11 @@ run.dummy:
 	  --formatter "html" \
 	  --log-level "trace"
 
+generate.coverage:
+	$(engine)
+	rm -rf transmute.json || true
+	COVERAGE=true rspec tests/fixtures/spec/
+
 publish:
 	git tag -a v$(VERSION) -m "Bump version to $(VERSION)"
 	git push --tags
