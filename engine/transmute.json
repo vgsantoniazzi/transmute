@@ -35,6 +35,10 @@
     "./tests/fixtures/spec/app_spec.rb",
     "./tests/fixtures/spec/user_spec.rb"
   ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/app/app.rb:5": [
+    "./tests/fixtures/spec/app_spec.rb",
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
   "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_error_spec.rb:1": [
     "./tests/fixtures/spec/app_spec.rb",
     "./tests/fixtures/spec/user_spec.rb"
@@ -92,11 +96,9 @@
     "./tests/fixtures/spec/user_spec.rb"
   ],
   "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/app/user.rb:4": [
-    "./tests/fixtures/spec/app_spec.rb",
     "./tests/fixtures/spec/user_spec.rb"
   ],
   "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/app/user.rb:5": [
-    "./tests/fixtures/spec/app_spec.rb",
     "./tests/fixtures/spec/user_spec.rb"
   ],
   "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:6": [

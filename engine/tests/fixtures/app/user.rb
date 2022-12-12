@@ -1,4 +1,4 @@
-class User
+class User < Object
   attr_accessor :github, :repos
   def initialize(github = "vgsantoniazzi", repos = 0)
     @github = github
