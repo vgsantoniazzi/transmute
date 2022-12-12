@@ -10,14 +10,19 @@ static NUMBER_CHARSET: &str = "1234567890";
 static OPERATOR_CHARSET: [&str; 6] = [">", "<", "<=", ">=", "==", "!="];
 static EQUALITY_OPERATOR_CHARSET: [&str; 2] = ["==", "!="];
 
-pub fn find_all(file_path: &str) -> Vec<MutableItem> {
+pub fn find_all(file_path: &str, line_number: u16) -> Vec<MutableItem> {
     trace!("searching all mutable items for file {}", file_path);
 
     let mut mutations: Vec<MutableItem> = Vec::new();
 
-    let mut line_counter = 0;
+    let mut line_counter: u16 = 0;
     for line_content in read_lines(file_path) {
         line_counter += 1;
+
+        if line_number != 0 && line_number != line_counter {
+            continue;
+        }
+
         let result = find_mutable_items(&line_content);
         for item in result {
             let (content, replace) = item;
