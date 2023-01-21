@@ -155,18 +155,20 @@
 
     </br>
 
-    {% for file_path, mutations in analytics.mutations | group_by(attribute="file_path") %}
+    {% for file_path, mutations_by_line in analytics.mutations | group_by(attribute="file_path") %}
       <div>
-        <button type="button" class="collapsible">{{ file_path }}<span style="float: right">{{ mutations | length }} mutations</span></button>
+        <button type="button" class="collapsible">{{ file_path }}<span style="float: right">{{ mutations_by_line | length }} mutations</span></button>
         <div class="content">
-          {% for mutation in mutations %}
+          {% for item_replace, mutations in mutations_by_line | group_by(attribute="item.replace") %}
             <div>
               <code class="collapsible">
-                {{ mutation.item.line_number }} | {{ mutation.item.implementation }} {% if mutation.exit_code == 0 %} 🚩 {% else %} ✅ {% endif %} - (<label style="text-decoration: line-through">{{mutation.item.content}}</label> {{ mutation.item.replace }})
+                {{ mutations[0].item.line_number }} | {{ mutations[0].item.implementation }} {% if mutations | filter(attribute="exit_code", value=0) | length == mutations | length %} 🚩 {% else %} ✅ {% endif %} - (<label style="text-decoration: line-through">{{mutations[0].item.content}}</label> {{ item_replace }})
               </code>
-              <code style="display: none; font-size: 14px; white-space: pre; color: {% if mutation.exit_code == 0 %} green {% else %} red {% endif %}">
+              {% for mutation in mutations %}
+                <code style="display: none; font-size: 14px; white-space: pre; color: {% if mutation.exit_code == 0 %} green {% else %} red {% endif %}">
 {{ mutation.stdout }}
-              </code>
+                </code>
+              {% endfor %}
             </div>
           {% endfor %}
         </div>
@@ -181,10 +183,14 @@
      coll[i].addEventListener("click", function() {
        this.classList.toggle("active");
        var content = this.nextElementSibling;
-       if (content.style.display === "block") {
-         content.style.display = "none";
-       } else {
-         content.style.display = "block";
+       while(content) {
+         if (content.style.display === "block") {
+           content.style.display = "none";
+         } else {
+           content.style.display = "block";
+         }
+
+         content = content.nextElementSibling;
        }
      });
    }
