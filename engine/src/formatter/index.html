@@ -5,11 +5,13 @@
     <style>
      body {
        font-family: 'Roboto', sans-serif;
+       margin: 0;
+       padding: 0;
      }
 
      .navbar {
        overflow: hidden;
-       background-color: #333;
+       background-color: #555555;
        top: 0;
        left: 0;
        width: 100%;
@@ -23,6 +25,11 @@
        padding: 20px 24px;
        text-decoration: none;
        font-size: 20px;
+     }
+
+     .navbar a:hover {
+       background-color: #ddd;
+       color: black;
      }
 
      .row {
@@ -39,37 +46,46 @@
        flex: 50%;
      }
 
+     .info.card {
+       background-color: #555555;
+       box-shadow: 0px 14px 80px rgba(34, 35, 58, 0.5);
+       border-radius: 25px;
+       color: white;
+       padding: 4%;
+     }
+
      .title {
        top: 0;
-       padding-top: 50px;
+       padding-bottom: 100px;
        font-size: 20px;
        text-align: center;
      }
 
      .details {
-       font-size: 40px;
+       font-size: 200px;
        text-align: center;
        color: #8FD14F;
      }
 
      .analytics {
        background-color: #555555;
+       box-shadow: 0px 14px 80px rgba(34, 35, 58, 0.5);
+       border-radius: 25px;
        color: white;
        margin: 2%;
-       flex: 0 1 24%;
-       padding-bottom: 5%;
-       padding-top: 5%;
+       flex: 25%;
      }
 
      .button {
-       background-color: #555555;
+       background-color: #ffffff;
        border: none;
-       color: white;
+       color: black;
        padding: 15px 32px;
        text-align: center;
        text-decoration: none;
        display: inline-block;
        font-size: 16px;
+       border-radius: 10px;
      }
 
      .collapsible {
@@ -82,6 +98,7 @@
        text-align: left;
        outline: none;
        font-size: 15px;
+       display: block;
      }
 
      .active, .collapsible:hover {
@@ -89,7 +106,7 @@
      }
 
      .content {
-       padding: 18px 18px;
+       padding: 3%;
        display: none;
        overflow: hidden;
        font-size: 18px;
@@ -99,14 +116,14 @@
   </head>
   <body>
     <div class="navbar">
-      <a> Transmute </a>
-      <a target="_blank" href="mailto:vgsantoniazzi@gmail.con" style="float: right">contact</a>
-      <a target="_blank" href="https://github.com/vgsantoniazzi/transmute" style="float: right">github</a>
+      <a target="_blank" href="https://github.com/vgsantoniazzi/transmute/">Transmute</a>
+      <a target="_blank" href="mailto:vgsantoniazzi@gmail.con" style="float: right">Contact</a>
+      <a target="_blank" href="https://github.com/vgsantoniazzi/transmute/" style="float: right">Docs</a>
     </div>
 
     <div class="row">
-      <div class="info" style="font-size: 60px">Results for Velocity</div>
-      <div class="info" style="font-size: 30px">
+      <div class="info" style="font-size: 100px; font-weight: 601">Hey! Results are ready!</div>
+      <div class="info card" style="font-size: 30px">
         <p>Transmute is a tool that performs mutation tests against your codebase.</p>
 
         <p>It will change your code and make the tests fail. If don't, we will raise it for you.</p>
@@ -117,23 +134,23 @@
 
     <div class="cards">
       <div class="analytics">
-        <p class="title">Files</p>
         <p class="details">{{ analytics.files_count }}</p>
+        <p class="title">Files</p>
       </div>
       <div class="analytics">
-        <p class="title">Mutations</p>
         <p class="details">{{ analytics.mutations | length }}</p>
+        <p class="title">Mutations</p>
       </div>
       <div class="analytics">
-        <p class="title">Failures</p>
         <p class="details" style="color: #F24726">{{ analytics.mutations | filter(attribute="exit_code", value=0) | length }}</p>
+        <p class="title">Failures</p>
       </div>
     </div>
 
     <div class="navbar">
       <a> Individual Results </a>
-      <a style="float: right" onclick="collapseAll()">collapse_all</a>
-      <a style="float: right" onclick="expandAll()">expand_all</a>
+      <a style="float: right; cursor: pointer;" onclick="collapseAll()">Collapse</a>
+      <a style="float: right; cursor: pointer;" onclick="expandAll()">Expand</a>
     </div>
 
     </br>
@@ -144,9 +161,10 @@
         <div class="content">
           {% for mutation in mutations %}
             <div>
-              <code>{{ mutation.item.line_number }} | {{ mutation.item.implementation }} {% if mutation.exit_code == 0 %} 🚩 {% else %} ✅ {% endif %} - (<label style="text-decoration: line-through">{{mutation.item.content}}</label> {{ mutation.item.replace }})</code>
-              <p></p>
-              <code style="font-size: 14px; white-space: pre; color: {% if mutation.exit_code == 0 %} green {% else %} red {% endif %}">
+              <code class="collapsible">
+                {{ mutation.item.line_number }} | {{ mutation.item.implementation }} {% if mutation.exit_code == 0 %} 🚩 {% else %} ✅ {% endif %} - (<label style="text-decoration: line-through">{{mutation.item.content}}</label> {{ mutation.item.replace }})
+              </code>
+              <code style="display: none; font-size: 14px; white-space: pre; color: {% if mutation.exit_code == 0 %} green {% else %} red {% endif %}">
 {{ mutation.stdout }}
               </code>
             </div>
