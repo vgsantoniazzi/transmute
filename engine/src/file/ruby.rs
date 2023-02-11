@@ -119,10 +119,8 @@ fn find_operators(string: &str) -> Vec<String> {
     let mut result: Vec<String> = Vec::new();
     let regex = Regex::new(r#"(>|>=|<=)"#).unwrap();
     for cap in regex.captures_iter(string) {
-        if !string.contains("class") {
-            trace!("Operator {} found", &cap[0]);
-            result.push(cap[0].to_string())
-        }
+        trace!("Operator {} found", &cap[0]);
+        result.push(cap[0].to_string())
     }
     return result;
 }
@@ -131,7 +129,7 @@ fn find_less_than_operators(string: &str) -> Vec<String> {
     let mut result: Vec<String> = Vec::new();
     let regex = Regex::new(r#"(<)"#).unwrap();
     for cap in regex.captures_iter(string) {
-        if !string.contains("class") {
+        if !string.contains("class") && !string.contains("<<") {
             trace!("Operator {} found", &cap[0]);
             result.push(cap[0].to_string())
         }
