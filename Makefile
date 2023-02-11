@@ -13,6 +13,10 @@ build:
 	$(engine)
 	cargo build
 
+release:
+	$(engine)
+	cargo build --target x86_64-unknown-linux-musl --release
+
 test:
 	$(engine)
 	cargo test
