@@ -87,7 +87,7 @@ fn find_mutable_items(string: &str) -> Vec<(String, String)> {
 
 fn find_strings(string: &str) -> Vec<String> {
     let mut result: Vec<String> = Vec::new();
-    let regex = Regex::new(r#"("[\w\s]+")"#).unwrap();
+    let regex = Regex::new(r#"("[\w\s].+")"#).unwrap();
     for cap in regex.captures_iter(string) {
         trace!("String {} found", &cap[0]);
         result.push(cap[0].to_string())

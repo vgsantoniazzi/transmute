@@ -1,0 +1,53 @@
+#!/bin/bash
+# Filters any git diff by line added.
+#
+# To add to your shell, just run:
+#   $ source bin/diff-lines
+#
+# If you are using BASH instead of ZSH, replace
+# match[2] by BASH_REMATCH[2] in all occurencies.
+#
+# Usage:
+#   $ git diff ffcfd5..76ebb8 | diff-lines
+#     engine/src/main.rs:1
+#     engine/src/main.rs:2
+#     engine/src/main.rs:3
+#     engine/src/main.rs:78
+#     engine/src/runner/mod.rs:13
+#     engine/tests/fixtures/app/app.rb:1
+#     engine/tests/fixtures/app/app.rb:2
+#     engine/tests/fixtures/app/app.rb:3
+#     engine/tests/fixtures/app/app.rb:4
+#     engine/tests/fixtures/app/user.rb:1
+#     engine/tests/fixtures/spec/app_spec.rb:3
+#     engine/tests/fixtures/spec/app_spec.rb:4
+#
+# More complex usage:
+# filters ".rb", removing "spec" ones, removing the "engine/" from the file path and joining in one line.
+#   $ git diff ffcfd5..76ebb8 | diff-lines | grep ".rb" | grep -Ev "spec" | sed -e "s/engine\///g" | tr '\n' ';'
+#     tests/fixtures/app/app.rb:1;tests/fixtures/app/app.rb:2;tests/fixtures/app/app.rb:3;tests/fixtures/app/app.rb:4;tests/fixtures/app/user.rb:1;
+#
+# Running transmute only for additions:
+#   $ transmute \
+#       --files $(git diff ffcfd5..76ebb8 | diff-lines | grep "rb" | grep -Ev "spec" | sed -e "s/engine\///g" | tr '\n' ';') \
+#       --coverage "transmute.json" \
+#       --command "rspec {file}" \
+#       --formatter "html" \
+#       --log-level "trace"
+
+diff-lines() {
+    local path=
+    local line=
+    while read; do
+        if [[ $REPLY =~ '\+\+\+\ (b\/)?([^[:blank:]@@]+)' ]]; then
+            path=${match[2]}
+        elif [[ $REPLY =~ '@@\ -[0-9]+(,[0-9]+)?\ \+([0-9]+)(,[0-9]+)?\ @@.*' ]]; then
+            line=${match[2]}
+        elif [[ $REPLY =~ '^(\033\[[0-9;]*m)*([\ +-])' ]]; then
+            if [[ ${match[2]} != - ]]; then
+                echo "$path:$line"
+                ((line++))
+            fi
+        fi
+    done
+}
