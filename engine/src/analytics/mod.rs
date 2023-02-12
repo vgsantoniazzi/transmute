@@ -1,5 +1,8 @@
+extern crate itertools;
+
 use crate::file::MutableItem;
 use serde::Serialize;
+use itertools::Itertools;
 
 #[derive(Debug, Serialize)]
 pub struct MutationResult {
@@ -31,5 +34,17 @@ impl AnalyticsResult {
             exit_code: exit_code,
             stdout: stdout,
         })
+    }
+
+    pub fn failures(&mut self) -> usize {
+        let status: Vec<bool> = self.mutations
+        .iter()
+        .group_by(|m| (m.file_path.clone(), m.item.replace.clone()))
+        .into_iter()
+        .map(|((_file_path, _item), group)|
+            group.collect::<Vec<&MutationResult>>().iter().any(|&r| r.exit_code != 0)
+        )
+        .collect();
+        return status.iter().filter(|&s| *s == false ).count();
     }
 }
