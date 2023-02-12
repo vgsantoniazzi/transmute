@@ -82,7 +82,7 @@ fn main() {
         }
     }
 
-    formatter::generate(&analytics, args.formatter);
+    formatter::generate(analytics, args.formatter);
 
     exit(if failed { 1 } else { 0 });
 }
