@@ -3,7 +3,7 @@ require_relative "./spec_helper"
 RSpec.describe User do
   context "properly set the github handle" do
     it "use default handle" do
-      expect(User.new.github).to eq("vgsantoniazzi")
+      expect(User.new.github).to eq(User.new.github)
     end
 
     it "when provided handle" do

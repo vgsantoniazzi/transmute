@@ -64,7 +64,6 @@ fn main() {
 
                 if exit_code != 0 {
                     mutable.undo(&file.path);
-                    failed = true;
                     continue 'mutate;
                 }
             }
@@ -73,6 +72,8 @@ fn main() {
                 "Changing '{}' on line '{}' did not break the specs. Consider adding a spec",
                 file.path, mutable.line_number
             );
+
+            failed = true;
 
             mutable.undo(&file.path);
 
