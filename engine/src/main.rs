@@ -84,5 +84,5 @@ fn main() {
 
     formatter::generate(&analytics, args.formatter);
 
-    exit(if failed { 1 } else { 0 });
+    exit(if failed { 0 } else { 1 });
 }
