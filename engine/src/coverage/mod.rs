@@ -7,15 +7,15 @@ pub struct Coverage {
 }
 
 impl Coverage {
-    pub fn load(file_path: &str) -> Coverage {
+    pub fn load(file_path: &str) -> Result<Coverage, String> {
         info!("Loading coverage {}..", file_path);
         let file = fs::read_to_string(file_path)
-            .unwrap_or_else(|_| panic!("Unable to read file: {}", file_path));
-        let cov = Coverage {
-            data: serde_json::from_str(&file).expect("Unable to parse"),
-        };
+            .map_err(|e| format!("unable to read coverage file '{}': {}", file_path, e))?;
+        let data = serde_json::from_str(&file)
+            .map_err(|e| format!("unable to parse coverage JSON '{}': {}", file_path, e))?;
+        let cov = Coverage { data };
         cov.warn_if_no_coverage_keys_match_cwd();
-        cov
+        Ok(cov)
     }
 
     pub fn find(&self, file: &str, line: u16) -> Vec<String> {

@@ -60,7 +60,13 @@ fn main() {
 
     info!("Starting transmute.");
 
-    let coverage = coverage::Coverage::load(&args.coverage);
+    let coverage = match coverage::Coverage::load(&args.coverage) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("transmute: {}", e);
+            exit(2);
+        }
+    };
     let files = file::File::load(&args.files);
     let mut analytics = analytics::AnalyticsResult::start(files.len().try_into().unwrap());
     let mut failed = false;

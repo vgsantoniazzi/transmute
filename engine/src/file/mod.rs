@@ -2,15 +2,15 @@ use glob::glob;
 use log::{info, trace, warn};
 use serde::Serialize;
 use std::io::Write;
-use std::io::{self, BufRead};
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
 mod ruby;
 
-static ACTIVE_MUTATION: OnceLock<Mutex<Option<(String, Vec<u8>)>>> = OnceLock::new();
+type ActiveMutation = Option<(String, Vec<u8>)>;
+static ACTIVE_MUTATION: OnceLock<Mutex<ActiveMutation>> = OnceLock::new();
 
-fn active_mutation() -> &'static Mutex<Option<(String, Vec<u8>)>> {
+fn active_mutation() -> &'static Mutex<ActiveMutation> {
     ACTIVE_MUTATION.get_or_init(|| Mutex::new(None))
 }
 
@@ -137,15 +137,9 @@ fn read_lines<P>(file_path: P) -> Vec<String>
 where
     P: AsRef<Path>,
 {
-    io::BufReader::new(open_file(file_path))
+    let bytes = std::fs::read(&file_path).expect("Unable to read file");
+    String::from_utf8_lossy(&bytes)
         .lines()
-        .collect::<Result<_, _>>()
-        .unwrap()
-}
-
-fn open_file<P>(file_path: P) -> std::fs::File
-where
-    P: AsRef<Path>,
-{
-    std::fs::File::open(file_path).expect("Unable to find file!")
+        .map(|line| line.to_string())
+        .collect()
 }

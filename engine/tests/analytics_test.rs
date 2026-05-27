@@ -15,9 +15,9 @@ fn item(replace: &str) -> file::MutableItem {
 }
 
 #[test]
-fn test_failures_callable_via_immutable_reference() {
+fn test_failures_callable_via_immutable_binding() {
     let r = analytics::AnalyticsResult::start(0);
-    let _ = (&r).failures();
+    let _: usize = r.failures();
 }
 
 #[test]

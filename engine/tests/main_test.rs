@@ -193,6 +193,46 @@ fn test_sigint_during_run_restores_source() -> Result<(), Box<dyn std::error::Er
 }
 
 #[test]
+fn test_malformed_coverage_json_exits_cleanly() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = scratch_dir("invalid_json");
+    let cov_path = dir.join("bad.json");
+    std::fs::write(&cov_path, "not json").unwrap();
+    let rb_path = dir.join("scratch.rb");
+    std::fs::write(&rb_path, "puts 42\n").unwrap();
+
+    let output = Command::cargo_bin("transmute")?
+        .arg("--coverage")
+        .arg(&cov_path)
+        .arg("--files")
+        .arg(&rb_path)
+        .arg("--command")
+        .arg("sh -c true")
+        .arg("--log-level")
+        .arg("warn")
+        .output()?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "Should exit non-zero; status: {:?}",
+        output.status
+    );
+    assert!(
+        !stderr.contains("panicked at") && !stderr.contains("RUST_BACKTRACE"),
+        "Should exit cleanly, not panic; stderr: {}",
+        stderr
+    );
+    assert!(
+        stderr.to_lowercase().contains("coverage"),
+        "Error message should mention coverage; stderr: {}",
+        stderr
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+    Ok(())
+}
+
+#[test]
 fn test_warns_when_coverage_keys_do_not_match_cwd() -> Result<(), Box<dyn std::error::Error>> {
     let dir = scratch_dir("cwd_mismatch");
     let rb_path = dir.join("scratch.rb");

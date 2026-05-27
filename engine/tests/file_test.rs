@@ -60,6 +60,32 @@ fn test_load_all_rb_files() {
 }
 
 #[test]
+fn test_find_mutations_handles_non_utf8_lines_without_panic() {
+    let path =
+        std::env::temp_dir().join(format!("transmute_test_non_utf8_{}.rb", std::process::id()));
+    let mut content: Vec<u8> = b"puts 42\n".to_vec();
+    content.extend_from_slice(&[0xFF, 0xFE, 0xFD, b'\n']);
+    content.extend_from_slice(b"puts 99\n");
+    std::fs::write(&path, &content).unwrap();
+
+    let path_str = path.to_str().unwrap().to_string();
+    let result = std::panic::catch_unwind(|| file::File::find_mutations(path_str.clone(), 0));
+
+    assert!(
+        result.is_ok(),
+        "find_mutations must not panic on non-UTF8 source"
+    );
+    let items = result.unwrap();
+    assert!(
+        items.iter().any(|m| m.content == "42"),
+        "Should still find mutations on the valid lines; got: {:?}",
+        items
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
 fn test_source_file_restored_when_caller_panics() {
     let scratch = scratch_path("guard_panic");
     let original = b"puts 42\n";
