@@ -17,6 +17,7 @@ regex = "1.5"
 random-string = "1.0"
 rand = "0.8"
 tera = "1"
+ctrlc = "3"
 
 [dev-dependencies]
 assert_cmd = "2.0"

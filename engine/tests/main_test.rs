@@ -1,12 +1,20 @@
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 fn scratch_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("transmute_test_{}_{}", std::process::id(), name));
     std::fs::create_dir_all(&dir).unwrap();
     dir
+}
+
+fn write_coverage_for(rb_path: &Path, line: u16, cov_path: &Path) {
+    let cwd = std::env::current_dir().unwrap();
+    let key = format!("{}/{}:{}", cwd.display(), rb_path.display(), line);
+    let content = format!(r#"{{"{}": ["dummy_spec.rb"]}}"#, key);
+    std::fs::write(cov_path, content).unwrap();
 }
 
 #[test]
@@ -104,6 +112,81 @@ fn test_writes_json_with_failure_count_to_custom_output_path(
         "JSON output should include the failures count; got: {}",
         content
     );
+
+    std::fs::remove_dir_all(&dir).ok();
+    Ok(())
+}
+
+#[test]
+fn test_fail_fast_restores_source_before_exit() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = scratch_dir("fail_fast");
+    let rb_path = dir.join("scratch.rb");
+    let original = "puts 42\n";
+    std::fs::write(&rb_path, original).unwrap();
+    let cov_path = dir.join("cov.json");
+    write_coverage_for(&rb_path, 1, &cov_path);
+
+    let mut cmd = Command::cargo_bin("transmute")?;
+    cmd.arg("--coverage").arg(&cov_path);
+    cmd.arg("--files").arg(&rb_path);
+    cmd.arg("--command").arg("sh -c true");
+    cmd.arg("--fail-fast");
+    cmd.arg("--log-level").arg("warn");
+
+    cmd.assert().failure();
+
+    let after = std::fs::read_to_string(&rb_path).unwrap();
+    assert_eq!(
+        after, original,
+        "Source must be restored before --fail-fast exits"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+    Ok(())
+}
+
+#[test]
+fn test_sigint_during_run_restores_source() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = scratch_dir("sigint");
+    let rb_path = dir.join("scratch.rb");
+    let original = "puts 42\n";
+    std::fs::write(&rb_path, original).unwrap();
+    let cov_path = dir.join("cov.json");
+    write_coverage_for(&rb_path, 1, &cov_path);
+
+    let binary = assert_cmd::cargo::cargo_bin("transmute");
+    let mut child = std::process::Command::new(binary)
+        .arg("--coverage")
+        .arg(&cov_path)
+        .arg("--files")
+        .arg(&rb_path)
+        .arg("--command")
+        .arg("sleep 30")
+        .arg("--log-level")
+        .arg("warn")
+        .spawn()?;
+
+    let start = std::time::Instant::now();
+    loop {
+        if std::fs::read_to_string(&rb_path).unwrap() != original {
+            break;
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            child.kill().ok();
+            panic!("mutation was not applied within 5s");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    std::process::Command::new("kill")
+        .arg("-INT")
+        .arg(child.id().to_string())
+        .status()?;
+
+    let _ = child.wait();
+
+    let after = std::fs::read_to_string(&rb_path).unwrap();
+    assert_eq!(after, original, "Source must be restored after SIGINT");
 
     std::fs::remove_dir_all(&dir).ok();
     Ok(())

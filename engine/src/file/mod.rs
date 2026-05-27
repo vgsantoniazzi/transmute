@@ -4,8 +4,21 @@ use serde::Serialize;
 use std::io::Write;
 use std::io::{self, BufRead};
 use std::path::Path;
+use std::sync::{Mutex, OnceLock};
 
 mod ruby;
+
+static ACTIVE_MUTATION: OnceLock<Mutex<Option<(String, Vec<u8>)>>> = OnceLock::new();
+
+fn active_mutation() -> &'static Mutex<Option<(String, Vec<u8>)>> {
+    ACTIVE_MUTATION.get_or_init(|| Mutex::new(None))
+}
+
+pub fn restore_active_mutation() {
+    if let Some((path, bytes)) = active_mutation().lock().unwrap().take() {
+        let _ = std::fs::write(&path, &bytes);
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MutableItem {
@@ -100,6 +113,7 @@ pub struct MutationGuard<'a> {
 impl<'a> MutationGuard<'a> {
     pub fn apply(file_path: &'a str, item: &MutableItem) -> MutationGuard<'a> {
         let original = std::fs::read(file_path).expect("Unable to read file");
+        *active_mutation().lock().unwrap() = Some((file_path.to_string(), original.clone()));
         let guard = MutationGuard {
             file_path,
             original,
@@ -115,6 +129,7 @@ impl<'a> Drop for MutationGuard<'a> {
         if let Err(e) = std::fs::write(self.file_path, &self.original) {
             eprintln!("FATAL: could not restore {}: {}", self.file_path, e);
         }
+        *active_mutation().lock().unwrap() = None;
     }
 }
 

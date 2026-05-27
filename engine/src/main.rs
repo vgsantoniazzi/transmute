@@ -52,6 +52,12 @@ fn main() {
         env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, args.log_level),
     );
 
+    ctrlc::set_handler(|| {
+        file::restore_active_mutation();
+        exit(130);
+    })
+    .expect("Error setting Ctrl-C handler");
+
     info!("Starting transmute.");
 
     let coverage = coverage::Coverage::load(&args.coverage);
@@ -94,6 +100,7 @@ fn main() {
             failed = true;
 
             if args.fail_fast {
+                drop(_guard);
                 exit(1);
             }
         }
