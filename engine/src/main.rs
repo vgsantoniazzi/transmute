@@ -54,7 +54,7 @@ fn main() {
 
     for file in files.iter() {
         'mutate: for mutable in file.mutable_items.iter() {
-            mutable.transmute(&file.path);
+            let _guard = file::MutationGuard::apply(&file.path, mutable);
 
             for spec_file in coverage.find(&file.path, mutable.line_number).iter() {
                 let (exit_code, stdout) = runner::run(&args.command, spec_file);
@@ -63,7 +63,6 @@ fn main() {
                 analytics.add(&file.path, mutable, exit_code, stdout);
 
                 if exit_code != 0 {
-                    mutable.undo(&file.path);
                     continue 'mutate;
                 }
             }
@@ -74,8 +73,6 @@ fn main() {
             );
 
             failed = true;
-
-            mutable.undo(&file.path);
 
             if args.fail_fast {
                 exit(1);

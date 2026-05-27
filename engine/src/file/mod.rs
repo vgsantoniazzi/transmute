@@ -87,29 +87,59 @@ impl MutableItem {
 
     fn change_content(&self, file_path: &str, transmute: bool) {
         let file_content = read_lines(file_path);
-        let mut file = std::fs::File::create(file_path).expect("Can't open file for writing");
-        let mut line_counter = 0;
-        for line_content in file_content {
-            line_counter += 1;
-            if line_counter == self.line_number {
-                if transmute {
-                    write!(
-                        file,
-                        "{}\n",
-                        line_content.replace(&self.content, &self.replace)
-                    )
-                    .unwrap();
+        let tmp_path = format!("{}.transmute.tmp", file_path);
+        {
+            let mut file =
+                std::fs::File::create(&tmp_path).expect("Can't open file for writing");
+            let mut line_counter = 0;
+            for line_content in file_content {
+                line_counter += 1;
+                if line_counter == self.line_number {
+                    if transmute {
+                        write!(
+                            file,
+                            "{}\n",
+                            line_content.replace(&self.content, &self.replace)
+                        )
+                        .unwrap();
+                    } else {
+                        write!(
+                            file,
+                            "{}\n",
+                            line_content.replace(&self.replace, &self.content)
+                        )
+                        .unwrap();
+                    }
                 } else {
-                    write!(
-                        file,
-                        "{}\n",
-                        line_content.replace(&self.replace, &self.content)
-                    )
-                    .unwrap();
+                    write!(file, "{}\n", line_content).unwrap();
                 }
-            } else {
-                write!(file, "{}\n", line_content).unwrap();
             }
+        }
+        std::fs::rename(&tmp_path, file_path).expect("Can't rename mutated file");
+    }
+}
+
+pub struct MutationGuard<'a> {
+    file_path: &'a str,
+    original: Vec<u8>,
+}
+
+impl<'a> MutationGuard<'a> {
+    pub fn apply(file_path: &'a str, item: &MutableItem) -> MutationGuard<'a> {
+        let original = std::fs::read(file_path).expect("Unable to read file");
+        let guard = MutationGuard {
+            file_path,
+            original,
+        };
+        item.transmute(file_path);
+        guard
+    }
+}
+
+impl<'a> Drop for MutationGuard<'a> {
+    fn drop(&mut self) {
+        if let Err(e) = std::fs::write(self.file_path, &self.original) {
+            eprintln!("FATAL: could not restore {}: {}", self.file_path, e);
         }
     }
 }
