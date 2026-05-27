@@ -53,7 +53,7 @@ fn main() {
     );
 
     ctrlc::set_handler(|| {
-        file::restore_active_mutation();
+        file::restore_active_mutations();
         exit(130);
     })
     .expect("Error setting Ctrl-C handler");

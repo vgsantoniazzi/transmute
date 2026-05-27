@@ -6,15 +6,16 @@ use std::sync::{Mutex, OnceLock};
 
 mod ruby;
 
-type ActiveMutation = Option<(String, Vec<u8>)>;
-static ACTIVE_MUTATION: OnceLock<Mutex<ActiveMutation>> = OnceLock::new();
+type ActiveMutations = Vec<(String, Vec<u8>)>;
+static ACTIVE_MUTATIONS: OnceLock<Mutex<ActiveMutations>> = OnceLock::new();
 
-fn active_mutation() -> &'static Mutex<ActiveMutation> {
-    ACTIVE_MUTATION.get_or_init(|| Mutex::new(None))
+fn active_mutations() -> &'static Mutex<ActiveMutations> {
+    ACTIVE_MUTATIONS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-pub fn restore_active_mutation() {
-    if let Some((path, bytes)) = active_mutation().lock().unwrap().take() {
+pub fn restore_active_mutations() {
+    let mut guard = active_mutations().lock().unwrap();
+    for (path, bytes) in guard.drain(..) {
         let _ = std::fs::write(&path, &bytes);
     }
 }
@@ -140,7 +141,10 @@ pub struct MutationGuard<'a> {
 impl<'a> MutationGuard<'a> {
     pub fn apply(file_path: &'a str, item: &MutableItem) -> std::io::Result<MutationGuard<'a>> {
         let original = std::fs::read(file_path)?;
-        *active_mutation().lock().unwrap() = Some((file_path.to_string(), original.clone()));
+        active_mutations()
+            .lock()
+            .unwrap()
+            .push((file_path.to_string(), original.clone()));
         let guard = MutationGuard {
             file_path,
             original,
@@ -158,7 +162,10 @@ impl<'a> Drop for MutationGuard<'a> {
         if let Err(e) = std::fs::write(self.file_path, &self.original) {
             eprintln!("FATAL: could not restore {}: {}", self.file_path, e);
         }
-        *active_mutation().lock().unwrap() = None;
+        active_mutations()
+            .lock()
+            .unwrap()
+            .retain(|(p, _)| p != self.file_path);
     }
 }
 
