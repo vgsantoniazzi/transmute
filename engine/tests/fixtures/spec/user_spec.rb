@@ -29,6 +29,27 @@ RSpec.describe User do
     end
   end
 
+  context "attr_accessor" do
+    it "writes and reads back the github handle" do
+      user = User.new
+      user.github = "octocat"
+      expect(user.github).to eq("octocat")
+    end
+
+    it "writes and reads back the repos count" do
+      user = User.new
+      user.repos = 42
+      expect(user.repos).to eq(42)
+    end
+
+    it "writes do not bleed across instances" do
+      a = User.new("a", 1)
+      b = User.new("b", 2)
+      a.github = "mutated"
+      expect(b.github).to eq("b")
+    end
+  end
+
   context "#pro?" do
     it "false when repos == 0" do
       expect(User.new("x", 0).pro?).to eq(false)
@@ -49,6 +70,13 @@ RSpec.describe User do
     it "true when repos == 20" do
       expect(User.new("x", 20).pro?).to eq(true)
     end
+
+    it "tracks the latest write to repos" do
+      user = User.new("x", 0)
+      expect(user.pro?).to eq(false)
+      user.repos = 50
+      expect(user.pro?).to eq(true)
+    end
   end
 
   context "#admin?" do
@@ -64,8 +92,19 @@ RSpec.describe User do
       expect(User.new("admi", 1).admin?).to eq(false)
     end
 
-    it "false when github has a suffix on 'admin'" do
+    it "false when github is 'admin' with a trailing character" do
       expect(User.new("admins", 1).admin?).to eq(false)
+    end
+
+    it "false when github differs only in case" do
+      expect(User.new("Admin", 1).admin?).to eq(false)
+    end
+
+    it "follows the latest github write" do
+      user = User.new("admin", 1)
+      expect(user.admin?).to eq(true)
+      user.github = "test"
+      expect(user.admin?).to eq(false)
     end
   end
 end
