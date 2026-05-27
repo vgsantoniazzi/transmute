@@ -4,6 +4,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
+fn read_to_pretty<P: AsRef<Path>>(p: P) -> String {
+    std::fs::read_to_string(p).unwrap()
+}
+
 fn scratch_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("transmute_test_{}_{}", std::process::id(), name));
     std::fs::create_dir_all(&dir).unwrap();
@@ -231,6 +235,47 @@ fn test_malformed_coverage_json_exits_cleanly() -> Result<(), Box<dyn std::error
         "Error message should mention coverage; stderr: {}",
         stderr
     );
+
+    std::fs::remove_dir_all(&dir).ok();
+    Ok(())
+}
+
+#[test]
+fn test_seed_produces_deterministic_mutation_replacements() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = scratch_dir("seed_repro");
+    let rb_path = dir.join("scratch.rb");
+    std::fs::write(&rb_path, "puts 42\n").unwrap();
+    let cov_path = dir.join("cov.json");
+    std::fs::write(&cov_path, "{}").unwrap();
+
+    let run = |out: &Path| {
+        Command::cargo_bin("transmute")
+            .unwrap()
+            .arg("--coverage")
+            .arg(&cov_path)
+            .arg("--files")
+            .arg(&rb_path)
+            .arg("--command")
+            .arg("sh -c true")
+            .arg("--output")
+            .arg(out)
+            .arg("--seed")
+            .arg("42")
+            .arg("--log-level")
+            .arg("warn")
+            .output()
+            .unwrap()
+    };
+
+    let out_a = dir.join("a.json");
+    let out_b = dir.join("b.json");
+    let _ = run(&out_a);
+    let _ = run(&out_b);
+
+    let a = read_to_pretty(&out_a);
+    let b = read_to_pretty(&out_b);
+    assert_eq!(a, b, "Same --seed should produce identical reports");
 
     std::fs::remove_dir_all(&dir).ok();
     Ok(())

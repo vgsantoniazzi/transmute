@@ -36,9 +36,11 @@ impl AnalyticsResult {
     }
 
     pub fn failures(&self) -> usize {
-        let mut state: HashMap<(&str, u32, usize, usize, &str), (bool, bool)> = HashMap::new();
+        type MutationKey<'a> = (&'a str, u32, usize, usize, &'a str);
+        type RunOutcome = (bool, bool);
+        let mut state: HashMap<MutationKey, RunOutcome> = HashMap::new();
         for m in self.mutations.iter() {
-            let key = (
+            let key: MutationKey = (
                 m.file_path.as_str(),
                 m.item.line_number,
                 m.item.start,
