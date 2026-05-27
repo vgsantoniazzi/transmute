@@ -36,7 +36,7 @@ The binary is written to `engine/target/x86_64-unknown-linux-musl/release/transm
 
 The coverage map is produced by a small library that hooks into your test runner. See `coverage/` for available adapters and run your suite once with `COVERAGE=true` to write `transmute.sqlite`.
 
-For Rails projects, there's also a persistent runner sidecar in `runners/rspec/` (`transmute-rspec` gem) that boots Rails once and accepts spec-run requests over a socket, replacing per-mutation `bundle exec rspec` invocations. Benchmark on a real Rails 8 app: 16 minutes → 7.5 seconds (~130× speedup). See `runners/rspec/README.md`.
+For Rails projects, there's also a persistent runner sidecar in `runners/rspec/` (`transmute-rspec` gem) that boots Rails once and accepts spec-run requests over a socket, replacing per-mutation `bundle exec rspec` invocations. Benchmark on a real Rails 8 app: 16 min → 6m41s (~2.4× faster), with a ~10% drop in kill rate from in-process state pollution that you triage by re-running suspicious survivors cold. See `runners/rspec/README.md`.
 
 ## Usage
 

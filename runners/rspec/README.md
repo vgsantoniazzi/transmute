@@ -4,7 +4,7 @@ Persistent RSpec runner daemon for [transmute](https://github.com/vgsantoniazzi/
 
 Mutation testing shells out to your test runner once per mutation. On a Rails app, that's ~3–5 seconds of framework boot per `rspec` invocation, and it adds up fast — a benchmark on a real Rails 8 app (10 models, 151 mutations, 423 spec runs) took **16 minutes** of wall clock, almost all of it Rails boot.
 
-This gem boots Rails once and accepts spec-run requests over a socket. The same benchmark with the daemon takes **7.5 seconds**: a **130× speedup**.
+This gem boots Rails once and accepts spec-run requests over a socket. The same benchmark with the daemon: **6m41s, ~2.4× faster**. The catch (see Caveats below): in-process runs share Rails state across specs, so ~10% of mutations that a cold `bundle exec rspec` would kill instead survive under the daemon as low-confidence. Useful as a fast first pass; promote suspicious survivors with a cold re-run.
 
 ## Installation
 
@@ -88,9 +88,9 @@ Other actions: `ping`, `quit`.
 
 ## Caveats
 
+- **State pollution drops kill rate by ~10%**. On the reference Rails 8 bench, 15 of 112 mutations (13%) that died under a cold `bundle exec rspec` only made the "low-confidence" bucket under the daemon. The daemon reuses Rails state across requests; `use_transactional_fixtures` cleans the DB, but anything else a spec leaves behind (instance vars on singletons, Faraday connection caches, memoized class-level state) carries over. Treat sidecar results as a fast first pass — for any mutation marked `low_confidence_failures`, re-run the engine against just that file with a cold `--command "bundle exec rspec {file}"` to confirm. This is the central trade-off of the sidecar: 2× faster, but ~10% noisier.
 - **Single writer**. One daemon per project. The daemon serves requests sequentially; concurrent clients will queue.
-- **State pollution between runs**. The daemon trusts your test suite to clean up after itself (`use_transactional_fixtures`, `database_cleaner`, etc.). A spec that mutates class-level state will affect subsequent runs.
-- **Memory growth**. Long-running Ruby processes leak; restart the daemon periodically.
+- **Memory growth**. Long-running Ruby processes leak; restart the daemon every few hundred requests.
 - **`--jobs` parallel mode is not yet supported**. Each transmute worker would need its own daemon. Use serial mode (`--jobs 1`, the default) with the sidecar for now.
 - **TCP listener has no authentication**. Use `tcp://127.0.0.1:PORT` to bind to localhost only, or use Unix sockets.
 
