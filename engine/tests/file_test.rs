@@ -163,7 +163,7 @@ fn test_guard_apply_returns_err_when_source_file_missing() {
 fn test_drop_removes_lingering_tmp_file() {
     let scratch = scratch_path("drop_tmp");
     std::fs::write(&scratch, b"puts 42\n").unwrap();
-    let tmp = format!("{}.transmute.tmp", scratch.display());
+    let tmp = format!("{}.transmute.{}.tmp", scratch.display(), std::process::id());
 
     let item = file::MutableItem {
         line_number: 1,
@@ -275,7 +275,7 @@ fn test_change_content_is_atomic_when_write_target_unavailable() {
     let original = b"puts \"a\"\nputs 42\n";
     std::fs::write(&scratch, original).unwrap();
 
-    let sabotage = format!("{}.transmute.tmp", scratch.display());
+    let sabotage = format!("{}.transmute.{}.tmp", scratch.display(), std::process::id());
     std::fs::create_dir_all(&sabotage).unwrap();
 
     let item = file::MutableItem {

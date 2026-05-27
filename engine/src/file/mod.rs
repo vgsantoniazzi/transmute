@@ -146,7 +146,7 @@ impl MutableItem {
         out.extend_from_slice(self.replace.as_bytes());
         out.extend_from_slice(&original[abs_end..]);
 
-        let tmp_path = format!("{}.transmute.tmp", file_path);
+        let tmp_path = format!("{}.transmute.{}.tmp", file_path, std::process::id());
         std::fs::write(&tmp_path, &out)?;
         std::fs::rename(&tmp_path, file_path)?;
         Ok(())
@@ -161,22 +161,29 @@ pub struct MutationGuard<'a> {
 impl<'a> MutationGuard<'a> {
     pub fn apply(file_path: &'a str, item: &MutableItem) -> std::io::Result<MutationGuard<'a>> {
         let original = std::fs::read(file_path)?;
+        item.write_mutation(&original, file_path)?;
         locked_active_mutations().push((file_path.to_string(), original.clone()));
-        let guard = MutationGuard {
+        Ok(MutationGuard {
             file_path,
             original,
-        };
-        item.write_mutation(&guard.original, file_path)?;
-        Ok(guard)
+        })
     }
 }
 
 impl<'a> Drop for MutationGuard<'a> {
     fn drop(&mut self) {
         trace!("Restoring {}", self.file_path);
-        let tmp_path = format!("{}.transmute.tmp", self.file_path);
+        let tmp_path = format!("{}.transmute.{}.tmp", self.file_path, std::process::id());
         let _ = std::fs::remove_file(&tmp_path);
-        if let Err(e) = std::fs::write(self.file_path, &self.original) {
+        let restore_tmp = format!(
+            "{}.transmute.restore.{}.tmp",
+            self.file_path,
+            std::process::id()
+        );
+        let atomic_restore = std::fs::write(&restore_tmp, &self.original)
+            .and_then(|()| std::fs::rename(&restore_tmp, self.file_path));
+        if let Err(e) = atomic_restore {
+            let _ = std::fs::remove_file(&restore_tmp);
             eprintln!("FATAL: could not restore {}: {}", self.file_path, e);
         }
         locked_active_mutations().retain(|(p, _)| p != self.file_path);
