@@ -1,20 +1,376 @@
-#[path = "../src/file/mod.rs"]
-mod file;
+use transmute::file;
+
+use std::panic::AssertUnwindSafe;
+use std::path::PathBuf;
+
+fn scratch_path(name: &str) -> PathBuf {
+    let mut path = std::env::temp_dir();
+    path.push(format!("transmute_test_{}_{}.rb", std::process::id(), name));
+    path
+}
+
+#[test]
+fn test_extract_line_number_handles_non_numeric_tail() {
+    assert_eq!(file::File::extract_line_number("app/foo.rb"), 0);
+    assert_eq!(file::File::extract_line_number("app/foo.rb:42"), 42);
+    assert_eq!(file::File::extract_line_number("C:\\src\\foo.rb"), 0);
+    assert_eq!(
+        file::File::extract_line_number("app/foo.rb:not_a_number"),
+        0
+    );
+}
+
+#[test]
+fn test_extract_glob_pattern_preserves_colons_in_path() {
+    assert_eq!(file::File::extract_glob_pattern("app/foo.rb"), "app/foo.rb");
+    assert_eq!(
+        file::File::extract_glob_pattern("app/foo.rb:42"),
+        "app/foo.rb"
+    );
+    assert_eq!(
+        file::File::extract_glob_pattern("C:\\src\\foo.rb"),
+        "C:\\src\\foo.rb"
+    );
+    assert_eq!(
+        file::File::extract_glob_pattern("C:\\src\\foo.rb:42"),
+        "C:\\src\\foo.rb"
+    );
+}
 
 #[test]
 fn test_load_all_rb_files() {
-    let files: Vec<String> = file::File::load("**/*.rb")
+    let mut files: Vec<String> = file::File::load("**/*.rb")
         .into_iter()
         .map(|f| f.path)
         .collect();
+    files.sort();
 
     assert_eq!(
         files,
         [
+            "tests/fixtures/app/app.rb",
             "tests/fixtures/app/user.rb",
+            "tests/fixtures/spec/app_spec.rb",
             "tests/fixtures/spec/spec_helper.rb",
             "tests/fixtures/spec/user_error_spec.rb",
             "tests/fixtures/spec/user_spec.rb"
         ]
     );
+}
+
+#[test]
+fn test_find_mutations_handles_non_utf8_lines_without_panic() {
+    let path =
+        std::env::temp_dir().join(format!("transmute_test_non_utf8_{}.rb", std::process::id()));
+    let mut content: Vec<u8> = b"puts 42\n".to_vec();
+    content.extend_from_slice(&[0xFF, 0xFE, 0xFD, b'\n']);
+    content.extend_from_slice(b"puts 99\n");
+    std::fs::write(&path, &content).unwrap();
+
+    let path_str = path.to_str().unwrap().to_string();
+    let result = std::panic::catch_unwind(|| file::File::find_mutations(path_str.clone(), 0));
+
+    assert!(
+        result.is_ok(),
+        "find_mutations must not panic on non-UTF8 source"
+    );
+    let items = result.unwrap();
+    assert!(
+        items.iter().any(|m| m.content == "42"),
+        "Should still find mutations on the valid lines; got: {:?}",
+        items
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_mutation_applied_correctly_after_invalid_utf8_line() {
+    let path = std::env::temp_dir().join(format!(
+        "transmute_test_utf8_offset_{}.rb",
+        std::process::id()
+    ));
+    let mut content: Vec<u8> = b"# bad: ".to_vec();
+    content.extend_from_slice(&[0xFF, 0xFE]);
+    content.extend_from_slice(b"\nputs 42\n");
+    std::fs::write(&path, &content).unwrap();
+
+    let items = file::File::find_mutations(path.to_str().unwrap().to_string(), 0);
+    let mutations_for_42: Vec<_> = items.iter().filter(|m| m.content == "42").collect();
+    assert!(
+        !mutations_for_42.is_empty(),
+        "Line 2 mutation must be discoverable even when line 1 has invalid UTF-8"
+    );
+
+    let m = mutations_for_42[0];
+    let original = std::fs::read(&path).unwrap();
+    m.write_mutation(&original, path.to_str().unwrap()).unwrap();
+    let after = std::fs::read(&path).unwrap();
+
+    assert!(
+        after.starts_with(b"# bad: \xFF\xFE\n"),
+        "Line 1 invalid-UTF8 bytes must be preserved byte-exact; got: {:?}",
+        &after[..10.min(after.len())]
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_transmute_aborts_when_target_bytes_no_longer_match() {
+    let scratch = scratch_path("drift");
+    std::fs::write(&scratch, b"puts 42\n").unwrap();
+    let drifted = b"puts 1234567\n";
+    std::fs::write(&scratch, drifted).unwrap();
+
+    let item = file::MutableItem {
+        line_number: 1,
+        start: 5,
+        end: 7,
+        implementation: "puts 42".to_string(),
+        content: "42".to_string(),
+        replace: "99".to_string(),
+    };
+    item.transmute(scratch.to_str().unwrap());
+
+    let after = std::fs::read(&scratch).unwrap();
+    assert_eq!(
+        after, drifted,
+        "When target bytes don't match content, transmute must not splice wrong bytes"
+    );
+
+    std::fs::remove_file(&scratch).ok();
+}
+
+#[test]
+fn test_guard_apply_returns_err_when_source_file_missing() {
+    let item = file::MutableItem {
+        line_number: 1,
+        start: 0,
+        end: 1,
+        implementation: "x".to_string(),
+        content: "x".to_string(),
+        replace: "y".to_string(),
+    };
+    let result = file::MutationGuard::apply("/nonexistent/path/to/missing.rb", &item);
+    assert!(
+        result.is_err(),
+        "Missing source file must surface as Err, not panic"
+    );
+}
+
+#[test]
+fn test_drop_removes_lingering_tmp_file() {
+    let scratch = scratch_path("drop_tmp");
+    std::fs::write(&scratch, b"puts 42\n").unwrap();
+    let tmp = format!("{}.transmute.{}.tmp", scratch.display(), std::process::id());
+
+    let item = file::MutableItem {
+        line_number: 1,
+        start: 5,
+        end: 7,
+        implementation: "puts 42".to_string(),
+        content: "42".to_string(),
+        replace: "99".to_string(),
+    };
+    {
+        let _g = file::MutationGuard::apply(scratch.to_str().unwrap(), &item).unwrap();
+        std::fs::write(&tmp, b"leftover").unwrap();
+    }
+
+    assert!(
+        !std::path::Path::new(&tmp).exists(),
+        "Drop must clean up the .transmute.tmp file"
+    );
+
+    std::fs::remove_file(&scratch).ok();
+}
+
+#[test]
+fn test_drop_does_not_leave_restore_tmp_artifact() {
+    let scratch = scratch_path("drop_restore_tmp");
+    std::fs::write(&scratch, b"puts 42\n").unwrap();
+    let restore_tmp = format!(
+        "{}.transmute.restore.{}.tmp",
+        scratch.display(),
+        std::process::id()
+    );
+
+    let item = file::MutableItem {
+        line_number: 1,
+        start: 5,
+        end: 7,
+        implementation: "puts 42".to_string(),
+        content: "42".to_string(),
+        replace: "99".to_string(),
+    };
+    {
+        let _g = file::MutationGuard::apply(scratch.to_str().unwrap(), &item).unwrap();
+    }
+
+    assert!(
+        !std::path::Path::new(&restore_tmp).exists(),
+        "Drop must leave no .transmute.restore.<pid>.tmp behind after a successful atomic restore"
+    );
+
+    std::fs::remove_file(&scratch).ok();
+}
+
+#[test]
+fn test_two_guards_on_same_path_do_not_cross_remove_each_others_entry() {
+    let scratch_a = scratch_path("token_a");
+    let scratch_b = scratch_path("token_b");
+    std::fs::write(&scratch_a, b"puts 1\n").unwrap();
+    std::fs::write(&scratch_b, b"puts 1\n").unwrap();
+
+    let item = |c: &str, r: &str| file::MutableItem {
+        line_number: 1,
+        start: 5,
+        end: 6,
+        implementation: format!("puts {}", c),
+        content: c.to_string(),
+        replace: r.to_string(),
+    };
+
+    let g_a = file::MutationGuard::apply(scratch_a.to_str().unwrap(), &item("1", "9")).unwrap();
+    let g_b = file::MutationGuard::apply(scratch_b.to_str().unwrap(), &item("1", "8")).unwrap();
+
+    drop(g_a);
+
+    let after_b_while_b_still_held = std::fs::read(&scratch_b).unwrap();
+    assert_eq!(
+        after_b_while_b_still_held, b"puts 8\n",
+        "Dropping guard A must NOT trigger guard B's restore (different paths, different tokens)"
+    );
+
+    drop(g_b);
+
+    let after_a = std::fs::read(&scratch_a).unwrap();
+    let after_b = std::fs::read(&scratch_b).unwrap();
+    assert_eq!(after_a, b"puts 1\n");
+    assert_eq!(after_b, b"puts 1\n");
+
+    std::fs::remove_file(&scratch_a).ok();
+    std::fs::remove_file(&scratch_b).ok();
+}
+
+#[test]
+fn test_transmute_preserves_crlf_and_no_trailing_newline() {
+    let scratch = scratch_path("crlf_preserve");
+    let original: &[u8] = b"puts 42\r\nputs 99";
+    std::fs::write(&scratch, original).unwrap();
+
+    let item = file::MutableItem {
+        line_number: 1,
+        start: 5,
+        end: 7,
+        implementation: "puts 42".to_string(),
+        content: "42".to_string(),
+        replace: "10".to_string(),
+    };
+    item.transmute(scratch.to_str().unwrap());
+
+    let after = std::fs::read(&scratch).unwrap();
+    assert_eq!(
+        after, b"puts 10\r\nputs 99",
+        "CRLF and absent trailing newline must be preserved byte-exact"
+    );
+
+    std::fs::remove_file(&scratch).ok();
+}
+
+#[test]
+fn test_source_file_restored_when_caller_panics() {
+    let scratch = scratch_path("guard_panic");
+    let original = b"puts 42\n";
+    std::fs::write(&scratch, original).unwrap();
+
+    let item = file::MutableItem {
+        line_number: 1,
+        start: 5,
+        end: 7,
+        implementation: "puts 42".to_string(),
+        content: "42".to_string(),
+        replace: "999".to_string(),
+    };
+
+    let path = scratch.clone();
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        let _guard = file::MutationGuard::apply(path.to_str().unwrap(), &item).unwrap();
+        panic!("simulated runner failure");
+    }));
+    assert!(result.is_err());
+
+    let after = std::fs::read(&scratch).unwrap();
+    assert_eq!(after.as_slice(), original);
+
+    std::fs::remove_file(&scratch).ok();
+}
+
+#[test]
+fn test_source_file_restored_when_guard_dropped_normally() {
+    let scratch = scratch_path("guard_normal");
+    let original = b"puts 42\n";
+    std::fs::write(&scratch, original).unwrap();
+
+    let item = file::MutableItem {
+        line_number: 1,
+        start: 5,
+        end: 7,
+        implementation: "puts 42".to_string(),
+        content: "42".to_string(),
+        replace: "999".to_string(),
+    };
+
+    {
+        let _guard = file::MutationGuard::apply(scratch.to_str().unwrap(), &item).unwrap();
+        let mid = std::fs::read_to_string(&scratch).unwrap();
+        assert!(
+            mid.contains("999"),
+            "file should be mutated inside guard scope"
+        );
+    }
+
+    let after = std::fs::read(&scratch).unwrap();
+    assert_eq!(after.as_slice(), original);
+
+    std::fs::remove_file(&scratch).ok();
+}
+
+#[test]
+fn test_change_content_is_atomic_when_write_target_unavailable() {
+    let scratch = scratch_path("atomic_write");
+    let original = b"puts \"a\"\nputs 42\n";
+    std::fs::write(&scratch, original).unwrap();
+
+    let sabotage = format!("{}.transmute.{}.tmp", scratch.display(), std::process::id());
+    std::fs::create_dir_all(&sabotage).unwrap();
+
+    let item = file::MutableItem {
+        line_number: 2,
+        start: 5,
+        end: 7,
+        implementation: "puts 42".to_string(),
+        content: "42".to_string(),
+        replace: "999".to_string(),
+    };
+
+    let path = scratch.clone();
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        item.transmute(path.to_str().unwrap());
+    }));
+    assert!(
+        result.is_err(),
+        "transmute should panic when temp path is unavailable"
+    );
+
+    let after = std::fs::read(&scratch).unwrap();
+    assert_eq!(
+        after.as_slice(),
+        original,
+        "original file must remain intact when atomic write fails"
+    );
+
+    std::fs::remove_dir_all(&sabotage).ok();
+    std::fs::remove_file(&scratch).ok();
 }
