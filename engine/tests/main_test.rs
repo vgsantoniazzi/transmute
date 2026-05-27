@@ -1,3 +1,5 @@
+mod common;
+
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use std::path::{Path, PathBuf};
@@ -16,13 +18,16 @@ fn scratch_dir(name: &str) -> PathBuf {
 
 fn write_coverage_for(rb_path: &Path, line: u32, cov_path: &Path) {
     let key = if rb_path.is_absolute() {
-        format!("{}:{}", rb_path.display(), line)
+        rb_path.display().to_string()
     } else {
         let cwd = std::env::current_dir().unwrap();
-        format!("{}/{}:{}", cwd.display(), rb_path.display(), line)
+        format!("{}/{}", cwd.display(), rb_path.display())
     };
-    let content = format!(r#"{{"{}": ["dummy_spec.rb"]}}"#, key);
-    std::fs::write(cov_path, content).unwrap();
+    common::write_fixture(cov_path, &[(key.as_str(), line, &["dummy_spec.rb"])]);
+}
+
+fn write_empty_coverage(cov_path: &Path) {
+    common::write_fixture(cov_path, &[]);
 }
 
 #[test]
@@ -59,7 +64,7 @@ fn test_logging() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("--command")
         .arg("docker-compose run web rspec {file}");
     cmd.arg("--files").arg("**/*.rb");
-    cmd.arg("--coverage").arg("tests/fixtures/transmute.json");
+    cmd.arg("--coverage").arg("tests/fixtures/transmute.sqlite");
     cmd.arg("--log-level").arg("info");
 
     cmd.assert()
@@ -74,8 +79,8 @@ fn test_uncovered_mutation_is_recorded_as_surviving() -> Result<(), Box<dyn std:
     let dir = scratch_dir("no_specs");
     let rb_path = dir.join("scratch.rb");
     std::fs::write(&rb_path, "puts 42\n").unwrap();
-    let cov_path = dir.join("empty.json");
-    std::fs::write(&cov_path, "{}").unwrap();
+    let cov_path = dir.join("empty.sqlite");
+    write_empty_coverage(&cov_path);
 
     let mut cmd = Command::cargo_bin("transmute")?;
     cmd.arg("--coverage").arg(cov_path.to_str().unwrap());
@@ -97,8 +102,8 @@ fn test_writes_json_with_failure_count_to_custom_output_path(
     let dir = scratch_dir("output_path");
     let rb_path = dir.join("scratch.rb");
     std::fs::write(&rb_path, "puts 42\n").unwrap();
-    let cov_path = dir.join("cov.json");
-    std::fs::write(&cov_path, "{}").unwrap();
+    let cov_path = dir.join("cov.sqlite");
+    write_empty_coverage(&cov_path);
     let output_path = dir.join("custom.json");
 
     let mut cmd = Command::cargo_bin("transmute")?;
@@ -137,7 +142,7 @@ fn test_all_infra_runs_emit_inconclusive_warning() -> Result<(), Box<dyn std::er
     let dir = scratch_dir("infra_only");
     let rb_path = dir.join("scratch.rb");
     std::fs::write(&rb_path, "puts 42\n").unwrap();
-    let cov_path = dir.join("cov.json");
+    let cov_path = dir.join("cov.sqlite");
     write_coverage_for(&rb_path, 1, &cov_path);
     let output_path = dir.join("result.json");
 
@@ -178,8 +183,8 @@ fn test_unknown_formatter_exits_with_code_2() -> Result<(), Box<dyn std::error::
     let dir = scratch_dir("bad_formatter");
     let rb_path = dir.join("scratch.rb");
     std::fs::write(&rb_path, "puts 42\n").unwrap();
-    let cov_path = dir.join("cov.json");
-    std::fs::write(&cov_path, "{}").unwrap();
+    let cov_path = dir.join("cov.sqlite");
+    write_empty_coverage(&cov_path);
 
     let output = Command::cargo_bin("transmute")?
         .arg("--coverage")
@@ -216,7 +221,7 @@ fn test_fail_fast_restores_source_before_exit() -> Result<(), Box<dyn std::error
     let rb_path = dir.join("scratch.rb");
     let original = "puts 42\n";
     std::fs::write(&rb_path, original).unwrap();
-    let cov_path = dir.join("cov.json");
+    let cov_path = dir.join("cov.sqlite");
     write_coverage_for(&rb_path, 1, &cov_path);
 
     let mut cmd = Command::cargo_bin("transmute")?;
@@ -244,7 +249,7 @@ fn test_sigint_during_run_restores_source() -> Result<(), Box<dyn std::error::Er
     let rb_path = dir.join("scratch.rb");
     let original = "puts 42\n";
     std::fs::write(&rb_path, original).unwrap();
-    let cov_path = dir.join("cov.json");
+    let cov_path = dir.join("cov.sqlite");
     write_coverage_for(&rb_path, 1, &cov_path);
 
     let binary = assert_cmd::cargo::cargo_bin("transmute");
@@ -286,10 +291,10 @@ fn test_sigint_during_run_restores_source() -> Result<(), Box<dyn std::error::Er
 }
 
 #[test]
-fn test_malformed_coverage_json_exits_cleanly() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = scratch_dir("invalid_json");
-    let cov_path = dir.join("bad.json");
-    std::fs::write(&cov_path, "not json").unwrap();
+fn test_invalid_coverage_db_exits_cleanly() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = scratch_dir("invalid_db");
+    let cov_path = dir.join("bad.sqlite");
+    std::fs::write(&cov_path, "not a sqlite file").unwrap();
     let rb_path = dir.join("scratch.rb");
     std::fs::write(&rb_path, "puts 42\n").unwrap();
 
@@ -308,7 +313,7 @@ fn test_malformed_coverage_json_exits_cleanly() -> Result<(), Box<dyn std::error
     assert_eq!(
         output.status.code(),
         Some(2),
-        "Malformed coverage JSON must exit with code 2 (argparse infra); status: {:?}",
+        "Invalid coverage DB must exit with code 2; status: {:?}",
         output.status
     );
     assert!(
@@ -317,8 +322,9 @@ fn test_malformed_coverage_json_exits_cleanly() -> Result<(), Box<dyn std::error
         stderr
     );
     assert!(
-        stderr.contains("unable to parse coverage JSON"),
-        "Error message must explain the parse failure; stderr: {}",
+        stderr.contains("not a valid transmute database")
+            || stderr.contains("unable to open coverage file"),
+        "Error message must explain the load failure; stderr: {}",
         stderr
     );
 
@@ -332,8 +338,8 @@ fn test_seed_produces_deterministic_mutation_replacements() -> Result<(), Box<dy
     let dir = scratch_dir("seed_repro");
     let rb_path = dir.join("scratch.rb");
     std::fs::write(&rb_path, "puts 42\n").unwrap();
-    let cov_path = dir.join("cov.json");
-    std::fs::write(&cov_path, "{}").unwrap();
+    let cov_path = dir.join("cov.sqlite");
+    write_empty_coverage(&cov_path);
 
     let run = |out: &Path| {
         Command::cargo_bin("transmute")
@@ -368,16 +374,82 @@ fn test_seed_produces_deterministic_mutation_replacements() -> Result<(), Box<dy
 }
 
 #[test]
-fn test_warns_when_coverage_keys_do_not_match_cwd() -> Result<(), Box<dyn std::error::Error>> {
+fn test_max_specs_per_mutation_limits_runner_invocations() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = scratch_dir("max_specs");
+    let rb_path = dir.join("scratch.rb");
+    std::fs::write(&rb_path, "puts 42\n").unwrap();
+
+    let cov_path = dir.join("cov.sqlite");
+    let key = if rb_path.is_absolute() {
+        rb_path.display().to_string()
+    } else {
+        let cwd = std::env::current_dir().unwrap();
+        format!("{}/{}", cwd.display(), rb_path.display())
+    };
+    common::write_fixture(
+        &cov_path,
+        &[(
+            key.as_str(),
+            1,
+            &["s1.rb", "s2.rb", "s3.rb", "s4.rb", "s5.rb"],
+        )],
+    );
+    let run_log = dir.join("runs.log");
+    let output_path = dir.join("result.json");
+
+    let cmd_str = format!("sh -c 'echo {{file}} >> {}'", run_log.display());
+
+    Command::cargo_bin("transmute")?
+        .arg("--coverage")
+        .arg(&cov_path)
+        .arg("--files")
+        .arg(&rb_path)
+        .arg("--command")
+        .arg(&cmd_str)
+        .arg("--max-specs-per-mutation")
+        .arg("2")
+        .arg("--output")
+        .arg(&output_path)
+        .arg("--log-level")
+        .arg("warn")
+        .output()?;
+
+    let log = std::fs::read_to_string(&run_log).unwrap_or_default();
+    let run_count = log.lines().count();
+    assert_eq!(
+        run_count, 2,
+        "--max-specs-per-mutation 2 must run exactly 2 specs (got log: {:?})",
+        log
+    );
+
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&output_path).unwrap()).unwrap();
+    assert_eq!(report["failures"], 1, "Survivor must be reported");
+    assert_eq!(
+        report["low_confidence_failures"], 1,
+        "Filtered run must roll up as low-confidence"
+    );
+    assert_eq!(report["uncovered_failures"], 0);
+    assert_eq!(
+        report["analytics"]["mutations"][0]["specs_total"], 5,
+        "Per-mutation specs_total must report the unfiltered total"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+    Ok(())
+}
+
+#[test]
+fn test_warns_when_no_coverage_files_match_cwd() -> Result<(), Box<dyn std::error::Error>> {
     let dir = scratch_dir("cwd_mismatch");
     let rb_path = dir.join("scratch.rb");
     std::fs::write(&rb_path, "puts 42\n").unwrap();
-    let cov_path = dir.join("mismatch.json");
-    std::fs::write(
+    let cov_path = dir.join("mismatch.sqlite");
+    common::write_fixture(
         &cov_path,
-        r#"{"/totally/unrelated/path/foo.rb:1": ["spec.rb"]}"#,
-    )
-    .unwrap();
+        &[("/totally/unrelated/path/foo.rb", 1, &["spec.rb"])],
+    );
 
     let mut cmd = Command::cargo_bin("transmute")?;
     cmd.arg("--coverage").arg(cov_path.to_str().unwrap());
@@ -386,7 +458,7 @@ fn test_warns_when_coverage_keys_do_not_match_cwd() -> Result<(), Box<dyn std::e
     cmd.arg("--log-level").arg("warn");
 
     cmd.assert()
-        .stderr(predicate::str::contains("coverage keys match"));
+        .stderr(predicate::str::contains("coverage files match"));
 
     std::fs::remove_dir_all(&dir).ok();
     Ok(())

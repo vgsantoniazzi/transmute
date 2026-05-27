@@ -1,130 +1,305 @@
+mod common;
+
 use transmute::coverage;
 
-use std::fs;
 use std::path::PathBuf;
 
-fn write_fixture(name: &str) -> PathBuf {
-    let cwd = std::env::current_dir().unwrap().display().to_string();
+fn fixture_path(name: &str) -> PathBuf {
     let mut path = std::env::temp_dir();
     path.push(format!(
-        "transmute_test_{}_{}.json",
+        "transmute_test_{}_{}.sqlite",
         std::process::id(),
         name
     ));
-    let content = format!(r#"{{"{cwd}/tests/fixtures/app/user.rb:3": ["./spec/user_spec.rb"]}}"#);
-    fs::write(&path, content).unwrap();
     path
+}
+
+fn absolute(path: &str) -> String {
+    let cwd = std::env::current_dir().unwrap().display().to_string();
+    format!("{}/{}", cwd, path)
 }
 
 #[test]
 fn test_load_returns_err_when_file_not_found() {
-    let err = match coverage::Coverage::load("not_found.json") {
+    let err = match coverage::Coverage::load("not_found.sqlite") {
         Err(e) => e,
         Ok(_) => panic!("Missing file should return Err, not Ok"),
     };
     assert!(
-        err.contains("unable to read coverage file") && err.contains("not_found.json"),
+        err.contains("unable to open coverage file") && err.contains("not_found.sqlite"),
         "Error message must name the missing file; got: {}",
         err
     );
 }
 
 #[test]
-fn test_load_returns_err_when_json_is_malformed() {
+fn test_load_returns_err_with_migration_hint_when_path_has_json_extension() {
     let mut path = std::env::temp_dir();
-    path.push(format!("transmute_test_{}_bad.json", std::process::id()));
-    fs::write(&path, "not json").unwrap();
+    path.push(format!("transmute_test_{}_legacy.json", std::process::id()));
+    std::fs::write(&path, r#"{"some_file.rb:1": ["spec.rb"]}"#).unwrap();
+
     let err = match coverage::Coverage::load(path.to_str().unwrap()) {
         Err(e) => e,
-        Ok(_) => panic!("Invalid JSON should return Err, not Ok"),
+        Ok(_) => panic!("Legacy .json path should return Err"),
     };
     assert!(
-        err.contains("unable to parse coverage JSON"),
-        "Error message must indicate parse failure; got: {}",
+        err.contains("legacy JSON format") && err.contains("transmute.sqlite"),
+        "Error must point users at the migration path; got: {}",
         err
     );
-    fs::remove_file(&path).ok();
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_load_returns_err_with_migration_hint_when_content_starts_with_brace() {
+    let path = fixture_path("json_no_ext");
+    std::fs::write(&path, r#"{"some_file.rb:1": ["spec.rb"]}"#).unwrap();
+
+    let err = match coverage::Coverage::load(path.to_str().unwrap()) {
+        Err(e) => e,
+        Ok(_) => panic!("JSON-content file should return Err"),
+    };
+    assert!(
+        err.contains("legacy JSON format"),
+        "JSON content (regardless of extension) must trigger migration hint; got: {}",
+        err
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_load_accepts_sqlite_file_named_with_json_extension() {
+    let mut path = std::env::temp_dir();
+    path.push(format!(
+        "transmute_test_{}_renamed.json",
+        std::process::id()
+    ));
+    let abs = absolute("a/b.rb");
+    common::write_fixture(&path, &[(abs.as_str(), 1, &["spec.rb"])]);
+
+    coverage::Coverage::load(path.to_str().unwrap())
+        .expect("A valid SQLite file must load even if its filename ends in .json");
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_load_returns_err_when_db_is_not_a_transmute_coverage_database() {
+    let path = fixture_path("not_transmute");
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute("CREATE TABLE something_else (id INTEGER)", [])
+        .unwrap();
+    drop(conn);
+
+    let err = match coverage::Coverage::load(path.to_str().unwrap()) {
+        Err(e) => e,
+        Ok(_) => panic!("Non-transmute DB should return Err"),
+    };
+    assert!(
+        err.contains("not a valid transmute database"),
+        "Error must explain the file is not a transmute DB; got: {}",
+        err
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_load_returns_err_when_schema_version_mismatches() {
+    let path = fixture_path("bad_version");
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    transmute::coverage::schema::initialize(&conn).unwrap();
+    conn.execute(
+        "UPDATE schema_meta SET value = '999' WHERE key = 'version'",
+        [],
+    )
+    .unwrap();
+    drop(conn);
+
+    let err = match coverage::Coverage::load(path.to_str().unwrap()) {
+        Err(e) => e,
+        Ok(_) => panic!("Mismatched schema version should return Err"),
+    };
+    assert!(
+        err.contains("999") && err.contains("schema version"),
+        "Error must name the mismatched version; got: {}",
+        err
+    );
+    std::fs::remove_file(&path).ok();
 }
 
 #[test]
 fn test_find_normalizes_curdir_components_in_path() {
-    let cwd = std::env::current_dir().unwrap().display().to_string();
-    let mut path = std::env::temp_dir();
-    path.push(format!("transmute_test_{}_curdir.json", std::process::id()));
-    let content = format!(r#"{{"{}/a/b.rb:1": ["spec.rb"]}}"#, cwd);
-    fs::write(&path, content).unwrap();
+    let path = fixture_path("curdir");
+    let abs = absolute("a/b.rb");
+    common::write_fixture(&path, &[(abs.as_str(), 1, &["spec.rb"])]);
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
     assert_eq!(
-        cov.find("./a/b.rb", 1),
+        cov.find("./a/b.rb", 1, 0).specs,
         vec!["spec.rb".to_string()],
-        "Leading './' must be stripped before lookup so the relative path matches the canonical key"
+        "Leading './' must be stripped before lookup"
     );
     assert_eq!(
-        cov.find("a/./b.rb", 1),
+        cov.find("a/./b.rb", 1, 0).specs,
         vec!["spec.rb".to_string()],
         "Mid-path './' segment must be normalized away"
     );
 
-    fs::remove_file(&path).ok();
-}
-
-#[test]
-fn test_find_skips_non_string_entries_without_panic() {
-    let cwd = std::env::current_dir().unwrap().display().to_string();
-    let mut path = std::env::temp_dir();
-    path.push(format!(
-        "transmute_test_{}_nonstring.json",
-        std::process::id()
-    ));
-    let content = format!(r#"{{"{}/a.rb:1": ["ok.rb", 42, null, "ok2.rb"]}}"#, cwd);
-    fs::write(&path, content).unwrap();
-
-    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    assert_eq!(
-        cov.find("a.rb", 1),
-        vec!["ok.rb".to_string(), "ok2.rb".to_string()],
-        "Non-string entries should be silently filtered, not panic"
-    );
-
-    fs::remove_file(&path).ok();
+    std::fs::remove_file(&path).ok();
 }
 
 #[test]
 fn test_find_returns_specs_when_file_path_is_absolute() {
-    let cwd = std::env::current_dir().unwrap().display().to_string();
-    let abs_file = format!("{}/tests/fixtures/app/user.rb", cwd);
-    let mut path = std::env::temp_dir();
-    path.push(format!("transmute_test_{}_abs.json", std::process::id()));
-    let content = format!(r#"{{"{}:3": ["./spec/user_spec.rb"]}}"#, abs_file);
-    fs::write(&path, content).unwrap();
+    let path = fixture_path("abs");
+    let abs_file = absolute("tests/fixtures/app/user.rb");
+    common::write_fixture(&path, &[(abs_file.as_str(), 3, &["./spec/user_spec.rb"])]);
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
     assert_eq!(
-        cov.find(&abs_file, 3),
+        cov.find(&abs_file, 3, 0).specs,
         ["./spec/user_spec.rb"],
         "Absolute file path must look up the same key the gem wrote"
     );
 
-    fs::remove_file(&path).ok();
+    std::fs::remove_file(&path).ok();
 }
 
 #[test]
 fn test_find_returns_specs_for_known_line() {
-    let fixture = write_fixture("test_find");
-    let cov = coverage::Coverage::load(fixture.to_str().unwrap()).unwrap();
-    assert_eq!(
-        cov.find("tests/fixtures/app/user.rb", 3),
-        ["./spec/user_spec.rb"]
-    );
-    fs::remove_file(&fixture).ok();
+    let path = fixture_path("known_line");
+    let abs = absolute("tests/fixtures/app/user.rb");
+    common::write_fixture(&path, &[(abs.as_str(), 3, &["./spec/user_spec.rb"])]);
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let m = cov.find("tests/fixtures/app/user.rb", 3, 0);
+    assert_eq!(m.specs, ["./spec/user_spec.rb"]);
+    assert_eq!(m.total, 1);
+
+    std::fs::remove_file(&path).ok();
 }
 
 #[test]
 fn test_find_returns_empty_when_key_missing() {
-    let fixture = write_fixture("test_find_missing");
-    let cov = coverage::Coverage::load(fixture.to_str().unwrap()).unwrap();
+    let path = fixture_path("missing_key");
+    let abs = absolute("tests/fixtures/app/user.rb");
+    common::write_fixture(&path, &[(abs.as_str(), 3, &["./spec/user_spec.rb"])]);
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let m = cov.find("not-found.rs", 1, 0);
     let expected: Vec<String> = Vec::new();
-    assert_eq!(cov.find("not-found.rs", 1), expected);
-    fs::remove_file(&fixture).ok();
+    assert_eq!(m.specs, expected);
+    assert_eq!(m.total, 0, "no covering specs => total is zero (uncovered)");
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_find_orders_specs_by_lines_of_target_file_descending() {
+    let path = fixture_path("local_ranking");
+    let abs = absolute("app/user.rb");
+    let other = absolute("app/other.rb");
+    common::write_fixture(
+        &path,
+        &[
+            (abs.as_str(), 1, &["narrow_spec.rb", "wide_spec.rb"]),
+            (abs.as_str(), 2, &["wide_spec.rb"]),
+            (abs.as_str(), 3, &["wide_spec.rb"]),
+            (other.as_str(), 1, &["narrow_spec.rb"]),
+            (other.as_str(), 2, &["narrow_spec.rb"]),
+            (other.as_str(), 3, &["narrow_spec.rb"]),
+            (other.as_str(), 4, &["narrow_spec.rb"]),
+        ],
+    );
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let m = cov.find("app/user.rb", 1, 0);
+    assert_eq!(
+        m.specs,
+        vec!["wide_spec.rb".to_string(), "narrow_spec.rb".to_string()],
+        "wide_spec covers 3 lines of user.rb; narrow_spec covers 1 line — wide_spec ranks higher"
+    );
+    assert_eq!(m.total, 2);
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_find_breaks_ties_alphabetically_by_spec_path() {
+    let path = fixture_path("tie_breaker");
+    let abs = absolute("app/user.rb");
+    common::write_fixture(
+        &path,
+        &[(abs.as_str(), 1, &["c_spec.rb", "a_spec.rb", "b_spec.rb"])],
+    );
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let m = cov.find("app/user.rb", 1, 0);
+    assert_eq!(
+        m.specs,
+        vec![
+            "a_spec.rb".to_string(),
+            "b_spec.rb".to_string(),
+            "c_spec.rb".to_string()
+        ],
+        "Equal line_count => sort alphabetically by path"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_find_caps_specs_when_max_specs_is_nonzero() {
+    let path = fixture_path("cap_max_specs");
+    let abs = absolute("app/user.rb");
+    common::write_fixture(
+        &path,
+        &[(
+            abs.as_str(),
+            1,
+            &["s_01.rb", "s_02.rb", "s_03.rb", "s_04.rb", "s_05.rb"],
+        )],
+    );
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let m = cov.find("app/user.rb", 1, 3);
+    assert_eq!(m.specs.len(), 3);
+    assert_eq!(m.total, 5, "total reflects covering set before truncation");
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_find_does_not_truncate_when_max_specs_is_zero() {
+    let path = fixture_path("unlimited");
+    let abs = absolute("app/user.rb");
+    common::write_fixture(
+        &path,
+        &[(abs.as_str(), 1, &["s_01.rb", "s_02.rb", "s_03.rb"])],
+    );
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let m = cov.find("app/user.rb", 1, 0);
+    assert_eq!(m.specs.len(), 3);
+    assert_eq!(m.total, 3);
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_find_returns_full_set_when_covering_count_equals_max_specs() {
+    let path = fixture_path("boundary");
+    let abs = absolute("app/user.rb");
+    common::write_fixture(
+        &path,
+        &[(abs.as_str(), 1, &["s_01.rb", "s_02.rb", "s_03.rb"])],
+    );
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let m = cov.find("app/user.rb", 1, 3);
+    assert_eq!(m.specs.len(), 3, "n == limit => no truncation");
+    assert_eq!(m.total, 3);
+
+    std::fs::remove_file(&path).ok();
 }

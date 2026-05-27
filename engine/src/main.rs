@@ -18,9 +18,13 @@ struct Args {
     #[clap(long)]
     command: String,
 
-    /// Coverage file name
-    #[clap(long, default_value = "transmute.json")]
+    /// Coverage database path
+    #[clap(long, default_value = "transmute.sqlite")]
     coverage: String,
+
+    /// Cap how many specs run per mutation. 0 = unlimited (default; matches pre-0.2 semantics). For each (file, line), specs are ranked by how many lines of that file they cover (more = closer), and the top N run. Survivors produced under a cap are tagged low_confidence_failures.
+    #[clap(long, default_value = "0")]
+    max_specs_per_mutation: usize,
 
     /// fail fast
     #[clap(long)]
@@ -60,7 +64,10 @@ fn main() {
     })
     .expect("Error setting Ctrl-C handler");
 
-    info!("Starting transmute.");
+    info!(
+        "Starting transmute (max-specs-per-mutation={}).",
+        args.max_specs_per_mutation
+    );
 
     ruby_mod::init_rng(args.seed);
 
@@ -89,13 +96,16 @@ fn main() {
 
     for file in files.iter() {
         'mutate: for mutable in file.mutable_items.iter() {
-            let specs = coverage.find(&file.path, mutable.line_number);
+            let match_ =
+                coverage.find(&file.path, mutable.line_number, args.max_specs_per_mutation);
+            let specs = match_.specs;
+            let specs_total = match_.total;
             if specs.is_empty() {
                 warn!(
                     "No specs cover {}:{}; recording as surviving.",
                     file.path, mutable.line_number
                 );
-                analytics.add(&file.path, mutable, 0, String::new());
+                analytics.add(&file.path, mutable, 0, String::new(), specs_total);
                 failed = true;
                 if args.fail_fast {
                     formatter::generate(analytics, &args.formatter, &args.output);
@@ -120,7 +130,7 @@ fn main() {
                     runner::run(&args.command, spec_file, Duration::from_secs(args.timeout));
 
                 trace!("{}", stdout);
-                analytics.add(&file.path, mutable, exit_code, stdout);
+                analytics.add(&file.path, mutable, exit_code, stdout, specs_total);
 
                 total_runs += 1;
                 if runner::is_infra_error(exit_code) {

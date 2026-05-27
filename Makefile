@@ -29,14 +29,14 @@ run.dummy:
 	$(engine)
 	cargo run -- \
 	  --files "tests/fixtures/app/**/*.rb" \
-	  --coverage "transmute.json" \
+	  --coverage "transmute.sqlite" \
 	  --command "rspec {file}" \
 	  --formatter "html" \
 	  --log-level "trace"
 
 generate.coverage:
 	$(engine)
-	rm -rf transmute.json || true
+	rm -rf transmute.sqlite || true
 	COVERAGE=true rspec tests/fixtures/spec/
 
 publish:

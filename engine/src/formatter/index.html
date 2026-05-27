@@ -145,6 +145,18 @@
         <p class="details" style="color: #F24726">{{ failures }}</p>
         <p class="title">Failures</p>
       </div>
+      {% if uncovered_failures > 0 %}
+      <div class="analytics">
+        <p class="details" style="color: #D0021B">{{ uncovered_failures }}</p>
+        <p class="title">Uncovered (no spec at all)</p>
+      </div>
+      {% endif %}
+      {% if low_confidence_failures > 0 %}
+      <div class="analytics">
+        <p class="details" style="color: #F5A623">{{ low_confidence_failures }}</p>
+        <p class="title">Low-confidence (filtered by --max-specs)</p>
+      </div>
+      {% endif %}
     </div>
 
     <div class="navbar">
@@ -162,7 +174,7 @@
           {% for item_replace, mutations in mutations_by_line | group_by(attribute="item.replace") %}
             <div>
               <code class="collapsible">
-                {{ mutations[0].item.line_number }} | {{ mutations[0].item.implementation }} {% if mutations | filter(attribute="exit_code", value=0) | length == mutations | length %} 🚩 {% else %} ✅ {% endif %} - (<label style="text-decoration: line-through">{{mutations[0].item.content}}</label> {{ item_replace }})
+                {{ mutations[0].item.line_number }} | {{ mutations[0].item.implementation }} {% if mutations | filter(attribute="exit_code", value=0) | length == mutations | length %} 🚩{% if mutations[0].specs_total == 0 %} 🛑 uncovered{% elif mutations[0].specs_total > mutations | length %} ⚠️ low-confidence ({{ mutations | length }}/{{ mutations[0].specs_total }} specs){% endif %} {% else %} ✅ {% endif %} - (<label style="text-decoration: line-through">{{mutations[0].item.content}}</label> {{ item_replace }})
               </code>
               {% for mutation in mutations %}
                 <code style="display: none; font-size: 14px; white-space: pre; color: {% if mutation.exit_code == 0 %} green {% else %} red {% endif %}">

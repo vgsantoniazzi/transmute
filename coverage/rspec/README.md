@@ -1,6 +1,6 @@
 # Transmute
 
-Ruby gem to help you to generate the reverse-coverage relationship between code and tests. The output is a `.transmute.json` file with key as source code + line and the value is an array with all specs that touch this particular line.
+Ruby gem that produces the reverse-coverage relationship between code and tests. Writes a `transmute.sqlite` database mapping every source line to the specs that touch it, consumed by the [transmute](https://github.com/vgsantoniazzi/transmute) mutation testing engine.
 
 ## Installation
 
@@ -9,6 +9,8 @@ Add this line to your application's Gemfile:
 ```ruby
 gem "transmute-ruby"
 ```
+
+The gem depends on the `sqlite3` gem, which requires `libsqlite3-dev` headers on the build host.
 
 And then execute:
 
@@ -40,9 +42,11 @@ RSpec.configure do |config|
 end
 ```
 
+`Transmute.store!` writes to `transmute.sqlite` by default; pass a path to override.
+
 ## Test
 
-We prioritize end-to-end tests, so you'll not see spec file here. In order to make sure that everything is working properly, you should add rust specs in the engine folder.
+We prioritize end-to-end tests, so you'll not see spec files here. To verify everything works, run the engine's Rust integration tests in `engine/`.
 
 ## License
 

@@ -8,8 +8,8 @@ Gem::Specification.new do |spec|
   spec.authors       = ['Victor Antoniazzi']
   spec.email         = ['vgsantoniazzi@gmail.com']
 
-  spec.summary       = 'Generate reverse relationsip between code and specs.'
-  spec.description   = 'Ruby gem to help you to generate the reverse-coverage relationship between code and tests. The output is a `.transmute.json` file with key as source code + line and the value is an array with all specs that touch this particular line.'
+  spec.summary       = 'Generate the reverse relationship between code and specs.'
+  spec.description   = 'Ruby gem to help you to generate the reverse-coverage relationship between code and tests. The output is a `transmute.sqlite` database that maps every source line to the specs that touch it, used by the transmute engine for targeted mutation testing.'
   spec.homepage      = 'https://github.com/vgsantoniazzi/transmute'
   spec.license       = 'GPL-3.0'
   spec.required_ruby_version = Gem::Requirement.new('>= 2.4.0')
@@ -22,4 +22,6 @@ Gem::Specification.new do |spec|
   end
 
   spec.require_paths = ['lib']
+
+  spec.add_runtime_dependency 'sqlite3', '~> 1.4'
 end
