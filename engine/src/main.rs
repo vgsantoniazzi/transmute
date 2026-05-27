@@ -106,6 +106,13 @@ fn main() {
                 trace!("{}", stdout);
                 analytics.add(&file.path, mutable, exit_code, stdout);
 
+                if runner::is_infra_error(exit_code) {
+                    warn!(
+                        "Runner returned infra exit {} for spec {}; treating mutation as not killed.",
+                        exit_code, spec_file
+                    );
+                    continue;
+                }
                 if exit_code != 0 {
                     continue 'mutate;
                 }

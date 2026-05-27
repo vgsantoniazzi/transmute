@@ -8,6 +8,7 @@ use crate::file::MutableItem;
 
 static STRING_CHARSET: &str = "abcdefghijklmnopqrstuvwxyz_";
 static NUMBER_CHARSET: &str = "1234567890";
+static NUMBER_LEADING_CHARSET: &str = "123456789";
 static OPERATOR_CHARSET: [&str; 6] = [">", "<", "<=", ">=", "==", "!="];
 static EQUALITY_OPERATOR_CHARSET: [&str; 2] = ["==", "!="];
 
@@ -52,7 +53,11 @@ fn find_mutable_items(string: &str) -> Vec<(String, String, usize, usize)> {
 
     for (matched, start) in find_numbers(string) {
         let end = start + matched.len();
-        let replace = generate(3, NUMBER_CHARSET);
+        let replace = format!(
+            "{}{}",
+            generate(1, NUMBER_LEADING_CHARSET),
+            generate(2, NUMBER_CHARSET)
+        );
         items.push((matched, replace, start, end));
     }
 

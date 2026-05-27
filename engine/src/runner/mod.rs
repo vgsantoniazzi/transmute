@@ -4,6 +4,12 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+pub const INFRA_EXIT_CODES: &[i32] = &[2, 124, 125, 127];
+
+pub fn is_infra_error(exit_code: i32) -> bool {
+    INFRA_EXIT_CODES.contains(&exit_code)
+}
+
 pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
     let parts = match shlex::split(command) {
         Some(p) if !p.is_empty() => p,

@@ -58,7 +58,7 @@ impl File {
 
     pub fn extract_glob_pattern(path: &str) -> &str {
         match path.rsplit_once(':') {
-            Some((prefix, tail)) if tail.parse::<u16>().is_ok() => prefix,
+            Some((prefix, tail)) if tail.parse::<u32>().is_ok() => prefix,
             _ => path,
         }
     }
@@ -70,10 +70,7 @@ impl File {
     }
 
     pub fn find_mutations(file_path: String, line_number: u32) -> Vec<MutableItem> {
-        match Path::new(&file_path)
-            .extension()
-            .and_then(|s| s.to_str())
-        {
+        match Path::new(&file_path).extension().and_then(|s| s.to_str()) {
             Some("rb") => ruby::find_all(&file_path, line_number),
             _ => {
                 warn!("File '{}' is not supported. Skipping.", file_path);

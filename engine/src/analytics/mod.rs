@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::file::MutableItem;
+use crate::runner;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -45,7 +46,8 @@ impl AnalyticsResult {
                 m.item.replace.as_str(),
             );
             let entry = killed.entry(key).or_insert(false);
-            *entry = *entry || m.exit_code != 0;
+            let real_kill = m.exit_code != 0 && !runner::is_infra_error(m.exit_code);
+            *entry = *entry || real_kill;
         }
         killed.values().filter(|killed| !**killed).count()
     }
