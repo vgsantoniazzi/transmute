@@ -2,9 +2,39 @@ use log::trace;
 use rand::seq::SliceRandom;
 use random_string::generate;
 use regex::Regex;
+use std::sync::OnceLock;
 
 use crate::file::read_lines;
 use crate::file::MutableItem;
+
+fn re_double() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| Regex::new(r#""(?:[^"\\]|\\.)*""#).unwrap())
+}
+fn re_single() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| Regex::new(r#"'(?:[^'\\]|\\.)*'"#).unwrap())
+}
+fn re_symbol() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| Regex::new(r#"(?:^|[^\w:])(?P<symbol>:\w+)"#).unwrap())
+}
+fn re_number() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| Regex::new(r#"\d+"#).unwrap())
+}
+fn re_op_general() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| Regex::new(r#">=|<=|>"#).unwrap())
+}
+fn re_op_eq() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| Regex::new(r#"==|!="#).unwrap())
+}
+fn re_class_inheritance() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| Regex::new(r"\bclass\s+\w+\s+$").unwrap())
+}
 
 static STRING_CHARSET: &str = "abcdefghijklmnopqrstuvwxyz_";
 static NUMBER_CHARSET: &str = "1234567890";
@@ -99,8 +129,8 @@ fn dedupe_overlapping(
 }
 
 fn comment_start(string: &str) -> usize {
-    let double = Regex::new(r#""(?:[^"\\]|\\.)*""#).unwrap();
-    let single = Regex::new(r#"'(?:[^'\\]|\\.)*'"#).unwrap();
+    let double = re_double();
+    let single = re_single();
     let mut ranges: Vec<(usize, usize)> = Vec::new();
     for m in double.find_iter(string) {
         ranges.push((m.start(), m.end()));
@@ -133,8 +163,8 @@ fn random_other_operator(current: &str, charset: &[&str]) -> String {
 // or interpolation spans inside "#{...}". Mutating those forms reliably
 // would need a real Ruby tokenizer.
 fn find_strings(string: &str) -> Vec<(String, usize)> {
-    let double = Regex::new(r#""(?:[^"\\]|\\.)*""#).unwrap();
-    let single = Regex::new(r#"'(?:[^'\\]|\\.)*'"#).unwrap();
+    let double = re_double();
+    let single = re_single();
 
     let single_ranges: Vec<(usize, usize)> = single
         .find_iter(string)
@@ -178,8 +208,7 @@ fn find_strings(string: &str) -> Vec<(String, usize)> {
 }
 
 fn find_symbols(string: &str) -> Vec<(String, usize)> {
-    let regex = Regex::new(r#"(?:^|[^\w:])(?P<symbol>:\w+)"#).unwrap();
-    regex
+    re_symbol()
         .captures_iter(string)
         .filter_map(|cap| {
             let sym = cap.name("symbol")?;
@@ -190,9 +219,8 @@ fn find_symbols(string: &str) -> Vec<(String, usize)> {
 }
 
 fn find_numbers(string: &str) -> Vec<(String, usize)> {
-    let regex = Regex::new(r#"\d+"#).unwrap();
     let bytes = string.as_bytes();
-    regex
+    re_number()
         .find_iter(string)
         .filter(|m| {
             let prev = if m.start() > 0 {
@@ -216,8 +244,7 @@ fn find_numbers(string: &str) -> Vec<(String, usize)> {
 }
 
 fn find_operators(string: &str) -> Vec<(String, usize)> {
-    let regex = Regex::new(r#">=|<=|>"#).unwrap();
-    regex
+    re_op_general()
         .find_iter(string)
         .map(|m| {
             trace!("Operator {} found", m.as_str());
@@ -227,7 +254,7 @@ fn find_operators(string: &str) -> Vec<(String, usize)> {
 }
 
 fn find_less_than_operators(string: &str) -> Vec<(String, usize)> {
-    let class_inheritance = Regex::new(r"\bclass\s+\w+\s+$").unwrap();
+    let class_inheritance = re_class_inheritance();
     let bytes = string.as_bytes();
     let mut result = Vec::new();
     for (i, &b) in bytes.iter().enumerate() {
@@ -252,8 +279,7 @@ fn find_less_than_operators(string: &str) -> Vec<(String, usize)> {
 }
 
 fn find_eq_operators(string: &str) -> Vec<(String, usize)> {
-    let regex = Regex::new(r#"==|!="#).unwrap();
-    regex
+    re_op_eq()
         .find_iter(string)
         .map(|m| {
             trace!("Operator {} found", m.as_str());

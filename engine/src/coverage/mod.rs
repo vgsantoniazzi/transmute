@@ -23,10 +23,14 @@ impl Coverage {
     }
 
     pub fn find(&self, file: &str, line: u32) -> Vec<String> {
-        let accessor = if Path::new(file).is_absolute() {
-            format!("{}:{}", file, line)
+        let normalized: std::path::PathBuf = Path::new(file)
+            .components()
+            .filter(|c| !matches!(c, std::path::Component::CurDir))
+            .collect();
+        let accessor = if normalized.is_absolute() {
+            format!("{}:{}", normalized.display(), line)
         } else {
-            format!("{}/{}:{}", cwd(), file, line)
+            format!("{}/{}:{}", cwd(), normalized.display(), line)
         };
         trace!("loading specs for {}", accessor);
 

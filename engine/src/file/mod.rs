@@ -45,8 +45,14 @@ impl File {
             let pattern = File::extract_glob_pattern(path);
             let line_number = File::extract_line_number(path);
 
-            for file in glob(pattern).expect("Failed to read glob pattern") {
-                let file_path = file.unwrap().display().to_string();
+            for entry in glob(pattern).expect("Failed to read glob pattern") {
+                let file_path = match entry {
+                    Ok(p) => p.display().to_string(),
+                    Err(e) => {
+                        warn!("Skipping unreadable path: {}", e);
+                        continue;
+                    }
+                };
                 files.push(File {
                     path: file_path.clone(),
                     mutable_items: File::find_mutations(file_path, line_number),
