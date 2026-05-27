@@ -220,6 +220,21 @@ fn test_numbers_skips_floats_and_hex_literals() {
 }
 
 #[test]
+fn test_double_quoted_substring_inside_single_quoted_string_is_not_mutated() {
+    let (path, items) = mutations_for(r#"puts 'outer "inner" tail'"#, "double_in_single");
+    let doubles: Vec<_> = items
+        .iter()
+        .filter(|m| m.content.starts_with('"'))
+        .collect();
+    assert!(
+        doubles.is_empty(),
+        "Double-quoted substring inside single-quoted literal should be skipped; got: {:?}",
+        doubles
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
 fn test_numbers_skip_leading_digit_of_underscore_separated_literal() {
     let (path, items) = mutations_for("x = 1_000_000", "underscore_literal");
     let numbers: Vec<_> = items

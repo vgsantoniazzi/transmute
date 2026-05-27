@@ -108,24 +108,39 @@ fn find_strings(string: &str) -> Vec<(String, usize)> {
     let double = Regex::new(r#""(?:[^"\\]|\\.)*""#).unwrap();
     let single = Regex::new(r#"'(?:[^'\\]|\\.)*'"#).unwrap();
 
+    let single_ranges: Vec<(usize, usize)> = single
+        .find_iter(string)
+        .filter(|m| m.as_str().len() > 2)
+        .map(|m| (m.start(), m.end()))
+        .collect();
+    let double_ranges: Vec<(usize, usize)> = double
+        .find_iter(string)
+        .filter(|m| m.as_str().len() > 2)
+        .map(|m| (m.start(), m.end()))
+        .collect();
+
     let mut out: Vec<(String, usize)> = Vec::new();
-    let mut double_ranges: Vec<(usize, usize)> = Vec::new();
     for m in double.find_iter(string) {
         if m.as_str().len() <= 2 {
             continue;
         }
+        let inside_single = single_ranges
+            .iter()
+            .any(|(s, e)| m.start() >= *s && m.start() < *e);
+        if inside_single {
+            continue;
+        }
         trace!("String {} found", m.as_str());
         out.push((m.as_str().to_string(), m.start()));
-        double_ranges.push((m.start(), m.end()));
     }
     for m in single.find_iter(string) {
         if m.as_str().len() <= 2 {
             continue;
         }
-        let inside = double_ranges
+        let inside_double = double_ranges
             .iter()
             .any(|(s, e)| m.start() >= *s && m.start() < *e);
-        if inside {
+        if inside_double {
             continue;
         }
         trace!("String {} found", m.as_str());
