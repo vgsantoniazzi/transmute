@@ -207,6 +207,34 @@ fn test_find_orders_specs_by_lines_of_target_file_descending() {
 }
 
 #[test]
+fn test_find_prefers_convention_spec_over_alphabetically_earlier_unrelated_spec() {
+    let path = fixture_path("convention_wins");
+    let abs = absolute("app/models/user.rb");
+    common::write_fixture(
+        &path,
+        &[(
+            abs.as_str(),
+            1,
+            &[
+                "./spec/initializers/logging_spec.rb",
+                "./spec/models/user_spec.rb",
+                "./spec/jobs/auth_job_spec.rb",
+            ],
+        )],
+    );
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let m = cov.find("app/models/user.rb", 1, Some(1));
+    assert_eq!(
+        m.specs,
+        vec!["./spec/models/user_spec.rb".to_string()],
+        "Convention-matching spec must outrank alphabetically-earlier unrelated specs even when lines_in_file ties"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
 fn test_find_breaks_ties_alphabetically_by_spec_path() {
     let path = fixture_path("tie_breaker");
     let abs = absolute("app/user.rb");

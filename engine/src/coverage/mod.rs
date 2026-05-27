@@ -90,7 +90,13 @@ impl Coverage {
             }
         };
 
-        covering.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.2.cmp(&b.2)));
+        covering.sort_by_cached_key(|(_, lines, path)| {
+            (
+                proximity_rank(path, file),
+                std::cmp::Reverse(*lines),
+                path.clone(),
+            )
+        });
 
         let total = covering.len();
         let specs: Vec<String> = covering
@@ -187,6 +193,71 @@ impl Coverage {
             );
         }
     }
+}
+
+const SOURCE_ROOTS: &[&str] = &["app", "lib", "src"];
+const TEST_ROOTS: &[&str] = &["spec", "tests", "test", "__tests__"];
+const TEST_SUFFIX_MARKERS: &[&str] = &["_spec", "_test", ".spec", ".test", "-spec", "-test"];
+const TEST_PREFIX_MARKERS: &[&str] = &["test_", "spec_", "test.", "spec.", "test-", "spec-"];
+
+pub fn proximity_rank(spec_path: &str, source_path: &str) -> u8 {
+    let (source_stem, source_dir) = normalized_parts(source_path, SOURCE_ROOTS);
+    let (spec_stem, spec_dir) = normalized_parts(spec_path, TEST_ROOTS);
+    let spec_stem_unmarked = strip_test_markers(&spec_stem);
+
+    let name_match = !source_stem.is_empty() && source_stem == spec_stem_unmarked;
+    let dir_match = source_dir == spec_dir;
+
+    match (name_match, dir_match) {
+        (true, true) => 0,
+        (true, false) => 1,
+        (false, true) => 2,
+        (false, false) => 3,
+    }
+}
+
+fn normalized_parts(file_path: &str, roots: &[&str]) -> (String, Vec<String>) {
+    let path = Path::new(file_path);
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    let parent_components: Vec<String> = path
+        .parent()
+        .map(|p| {
+            p.components()
+                .filter_map(|c| match c {
+                    std::path::Component::Normal(s) => s.to_str().map(String::from),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let strip_at = parent_components
+        .iter()
+        .position(|c| roots.contains(&c.as_str()));
+    let remaining = match strip_at {
+        Some(i) => parent_components[i + 1..].to_vec(),
+        None => parent_components,
+    };
+    (stem, remaining)
+}
+
+fn strip_test_markers(stem: &str) -> String {
+    let lowered = stem.to_lowercase();
+    for suffix in TEST_SUFFIX_MARKERS {
+        if lowered.ends_with(suffix) && lowered.len() > suffix.len() {
+            return stem[..stem.len() - suffix.len()].to_string();
+        }
+    }
+    for prefix in TEST_PREFIX_MARKERS {
+        if lowered.starts_with(prefix) && lowered.len() > prefix.len() {
+            return stem[prefix.len()..].to_string();
+        }
+    }
+    stem.to_string()
 }
 
 fn looks_like_json_coverage(file_path: &str) -> bool {
