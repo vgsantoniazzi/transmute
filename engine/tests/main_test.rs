@@ -10,7 +10,7 @@ fn scratch_dir(name: &str) -> PathBuf {
     dir
 }
 
-fn write_coverage_for(rb_path: &Path, line: u16, cov_path: &Path) {
+fn write_coverage_for(rb_path: &Path, line: u32, cov_path: &Path) {
     let cwd = std::env::current_dir().unwrap();
     let key = format!("{}/{}:{}", cwd.display(), rb_path.display(), line);
     let content = format!(r#"{{"{}": ["dummy_spec.rb"]}}"#, key);

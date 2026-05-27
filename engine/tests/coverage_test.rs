@@ -41,10 +41,7 @@ fn test_find_skips_non_string_entries_without_panic() {
         "transmute_test_{}_nonstring.json",
         std::process::id()
     ));
-    let content = format!(
-        r#"{{"{}/a.rb:1": ["ok.rb", 42, null, "ok2.rb"]}}"#,
-        cwd
-    );
+    let content = format!(r#"{{"{}/a.rb:1": ["ok.rb", 42, null, "ok2.rb"]}}"#, cwd);
     fs::write(&path, content).unwrap();
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();

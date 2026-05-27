@@ -14,12 +14,12 @@ pub struct MutationResult {
 
 #[derive(Debug, Serialize)]
 pub struct AnalyticsResult {
-    pub files_count: i32,
+    pub files_count: usize,
     pub mutations: Vec<MutationResult>,
 }
 
 impl AnalyticsResult {
-    pub fn start(files_count: i32) -> AnalyticsResult {
+    pub fn start(files_count: usize) -> AnalyticsResult {
         AnalyticsResult {
             files_count,
             mutations: Vec::new(),

@@ -21,7 +21,7 @@ pub fn restore_active_mutation() {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MutableItem {
-    pub line_number: u16,
+    pub line_number: u32,
     pub start: usize,
     pub end: usize,
     pub implementation: String,
@@ -62,13 +62,13 @@ impl File {
         }
     }
 
-    pub fn extract_line_number(path: &str) -> u16 {
+    pub fn extract_line_number(path: &str) -> u32 {
         path.rsplit_once(':')
-            .and_then(|(_, tail)| tail.parse::<u16>().ok())
+            .and_then(|(_, tail)| tail.parse::<u32>().ok())
             .unwrap_or(0)
     }
 
-    pub fn find_mutations(file_path: String, line_number: u16) -> Vec<MutableItem> {
+    pub fn find_mutations(file_path: String, line_number: u32) -> Vec<MutableItem> {
         let signature: Vec<&str> = file_path.split(".").collect();
         match signature[signature.len() - 1] {
             "rb" => ruby::find_all(&file_path, line_number),

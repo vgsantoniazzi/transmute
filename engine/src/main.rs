@@ -68,7 +68,7 @@ fn main() {
         }
     };
     let files = file::File::load(&args.files);
-    let mut analytics = analytics::AnalyticsResult::start(files.len().try_into().unwrap());
+    let mut analytics = analytics::AnalyticsResult::start(files.len());
     let mut failed = false;
 
     info!("Running transmute for files. It can take several minutes..");

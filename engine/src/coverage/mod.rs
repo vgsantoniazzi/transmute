@@ -18,7 +18,7 @@ impl Coverage {
         Ok(cov)
     }
 
-    pub fn find(&self, file: &str, line: u16) -> Vec<String> {
+    pub fn find(&self, file: &str, line: u32) -> Vec<String> {
         let accessor = format!("{}/{}:{}", cwd(), file, line);
         trace!("loading specs for {}", accessor);
 
