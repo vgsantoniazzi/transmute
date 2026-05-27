@@ -152,12 +152,18 @@ fn find_numbers(string: &str) -> Vec<(String, usize)> {
     regex
         .find_iter(string)
         .filter(|m| {
-            let prev = if m.start() > 0 { bytes[m.start() - 1] } else { 0 };
+            let prev = if m.start() > 0 {
+                bytes[m.start() - 1]
+            } else {
+                0
+            };
             let next = bytes.get(m.end()).copied().unwrap_or(0);
+            let next_next = bytes.get(m.end() + 1).copied().unwrap_or(0);
             let prev_word = prev == b'_' || prev.is_ascii_alphabetic();
             let touches_dot = prev == b'.' || next == b'.';
             let base_prefix = matches!(next, b'x' | b'X' | b'b' | b'B' | b'o' | b'O');
-            !(prev_word || touches_dot || base_prefix)
+            let underscore_digit = next == b'_' && next_next.is_ascii_digit();
+            !(prev_word || touches_dot || base_prefix || underscore_digit)
         })
         .map(|m| {
             trace!("Number {} found", m.as_str());

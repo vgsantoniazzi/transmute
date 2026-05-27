@@ -85,6 +85,38 @@ fn test_find_mutations_handles_non_utf8_lines_without_panic() {
 }
 
 #[test]
+fn test_mutation_applied_correctly_after_invalid_utf8_line() {
+    let path = std::env::temp_dir().join(format!(
+        "transmute_test_utf8_offset_{}.rb",
+        std::process::id()
+    ));
+    let mut content: Vec<u8> = b"# bad: ".to_vec();
+    content.extend_from_slice(&[0xFF, 0xFE]);
+    content.extend_from_slice(b"\nputs 42\n");
+    std::fs::write(&path, &content).unwrap();
+
+    let items = file::File::find_mutations(path.to_str().unwrap().to_string(), 0);
+    let mutations_for_42: Vec<_> = items.iter().filter(|m| m.content == "42").collect();
+    assert!(
+        !mutations_for_42.is_empty(),
+        "Line 2 mutation must be discoverable even when line 1 has invalid UTF-8"
+    );
+
+    let m = mutations_for_42[0];
+    let original = std::fs::read(&path).unwrap();
+    m.write_mutation(&original, path.to_str().unwrap()).unwrap();
+    let after = std::fs::read(&path).unwrap();
+
+    assert!(
+        after.starts_with(b"# bad: \xFF\xFE\n"),
+        "Line 1 invalid-UTF8 bytes must be preserved byte-exact; got: {:?}",
+        &after[..10.min(after.len())]
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
 fn test_transmute_aborts_when_target_bytes_no_longer_match() {
     let scratch = scratch_path("drift");
     std::fs::write(&scratch, b"puts 42\n").unwrap();

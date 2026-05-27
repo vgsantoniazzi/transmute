@@ -168,13 +168,22 @@ impl<'a> Drop for MutationGuard<'a> {
     }
 }
 
-fn read_lines<P>(file_path: P) -> Vec<String>
+pub fn read_lines<P>(file_path: P) -> Vec<String>
 where
     P: AsRef<Path>,
 {
     let bytes = std::fs::read(&file_path).expect("Unable to read file");
-    String::from_utf8_lossy(&bytes)
-        .lines()
-        .map(|line| line.to_string())
-        .collect()
+    let mut out: Vec<String> = Vec::new();
+    for line in bytes.split(|&b| b == b'\n') {
+        let trimmed = if line.last() == Some(&b'\r') {
+            &line[..line.len() - 1]
+        } else {
+            line
+        };
+        match std::str::from_utf8(trimmed) {
+            Ok(s) => out.push(s.to_string()),
+            Err(_) => out.push(String::new()),
+        }
+    }
+    out
 }

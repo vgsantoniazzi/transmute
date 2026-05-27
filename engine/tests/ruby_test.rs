@@ -220,6 +220,21 @@ fn test_numbers_skips_floats_and_hex_literals() {
 }
 
 #[test]
+fn test_numbers_skip_leading_digit_of_underscore_separated_literal() {
+    let (path, items) = mutations_for("x = 1_000_000", "underscore_literal");
+    let numbers: Vec<_> = items
+        .iter()
+        .filter(|m| m.content.chars().all(|c| c.is_ascii_digit()))
+        .collect();
+    assert!(
+        numbers.is_empty(),
+        "1_000_000-style literals must not produce piecewise digit mutations; got: {:?}",
+        numbers
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
 fn test_overlapping_mutations_inside_string_literal_are_deduped() {
     let (path, items) = mutations_for(r#"puts "123""#, "digits_inside_string");
     let mut ranges: Vec<(usize, usize, &String)> =
