@@ -107,6 +107,14 @@ impl MutableItem {
             return;
         }
 
+        if &original[abs_start..abs_end] != self.content.as_bytes() {
+            eprintln!(
+                "transmute: '{}' changed since scan; skipping mutation at line {}",
+                file_path, self.line_number
+            );
+            return;
+        }
+
         let mut out = Vec::with_capacity(original.len() + self.replace.len());
         out.extend_from_slice(&original[..abs_start]);
         out.extend_from_slice(self.replace.as_bytes());
@@ -139,6 +147,8 @@ impl<'a> MutationGuard<'a> {
 impl<'a> Drop for MutationGuard<'a> {
     fn drop(&mut self) {
         trace!("Restoring {}", self.file_path);
+        let tmp_path = format!("{}.transmute.tmp", self.file_path);
+        let _ = std::fs::remove_file(&tmp_path);
         if let Err(e) = std::fs::write(self.file_path, &self.original) {
             eprintln!("FATAL: could not restore {}: {}", self.file_path, e);
         }

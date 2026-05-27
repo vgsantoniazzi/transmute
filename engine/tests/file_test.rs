@@ -86,6 +86,59 @@ fn test_find_mutations_handles_non_utf8_lines_without_panic() {
 }
 
 #[test]
+fn test_transmute_aborts_when_target_bytes_no_longer_match() {
+    let scratch = scratch_path("drift");
+    std::fs::write(&scratch, b"puts 42\n").unwrap();
+    let drifted = b"puts 1234567\n";
+    std::fs::write(&scratch, drifted).unwrap();
+
+    let item = file::MutableItem {
+        line_number: 1,
+        start: 5,
+        end: 7,
+        implementation: "puts 42".to_string(),
+        content: "42".to_string(),
+        replace: "99".to_string(),
+    };
+    item.transmute(scratch.to_str().unwrap());
+
+    let after = std::fs::read(&scratch).unwrap();
+    assert_eq!(
+        after, drifted,
+        "When target bytes don't match content, transmute must not splice wrong bytes"
+    );
+
+    std::fs::remove_file(&scratch).ok();
+}
+
+#[test]
+fn test_drop_removes_lingering_tmp_file() {
+    let scratch = scratch_path("drop_tmp");
+    std::fs::write(&scratch, b"puts 42\n").unwrap();
+    let tmp = format!("{}.transmute.tmp", scratch.display());
+
+    let item = file::MutableItem {
+        line_number: 1,
+        start: 5,
+        end: 7,
+        implementation: "puts 42".to_string(),
+        content: "42".to_string(),
+        replace: "99".to_string(),
+    };
+    {
+        let _g = file::MutationGuard::apply(scratch.to_str().unwrap(), &item);
+        std::fs::write(&tmp, b"leftover").unwrap();
+    }
+
+    assert!(
+        !std::path::Path::new(&tmp).exists(),
+        "Drop must clean up the .transmute.tmp file"
+    );
+
+    std::fs::remove_file(&scratch).ok();
+}
+
+#[test]
 fn test_transmute_preserves_crlf_and_no_trailing_newline() {
     let scratch = scratch_path("crlf_preserve");
     let original: &[u8] = b"puts 42\r\nputs 99";
