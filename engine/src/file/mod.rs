@@ -13,8 +13,15 @@ fn active_mutations() -> &'static Mutex<ActiveMutations> {
     ACTIVE_MUTATIONS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
+fn locked_active_mutations() -> std::sync::MutexGuard<'static, ActiveMutations> {
+    match active_mutations().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
 pub fn restore_active_mutations() {
-    let mut guard = active_mutations().lock().unwrap();
+    let mut guard = locked_active_mutations();
     for (path, bytes) in guard.drain(..) {
         let _ = std::fs::write(&path, &bytes);
         let tmp = format!("{}.transmute.tmp", path);
@@ -47,7 +54,14 @@ impl File {
             let pattern = File::extract_glob_pattern(path);
             let line_number = File::extract_line_number(path);
 
-            for entry in glob(pattern).expect("Failed to read glob pattern") {
+            let entries = match glob(pattern) {
+                Ok(e) => e,
+                Err(e) => {
+                    warn!("Bad --files pattern '{}': {}; skipping.", pattern, e);
+                    continue;
+                }
+            };
+            for entry in entries {
                 let file_path = match entry {
                     Ok(p) => p.display().to_string(),
                     Err(e) => {
@@ -147,10 +161,7 @@ pub struct MutationGuard<'a> {
 impl<'a> MutationGuard<'a> {
     pub fn apply(file_path: &'a str, item: &MutableItem) -> std::io::Result<MutationGuard<'a>> {
         let original = std::fs::read(file_path)?;
-        active_mutations()
-            .lock()
-            .unwrap()
-            .push((file_path.to_string(), original.clone()));
+        locked_active_mutations().push((file_path.to_string(), original.clone()));
         let guard = MutationGuard {
             file_path,
             original,
@@ -168,10 +179,7 @@ impl<'a> Drop for MutationGuard<'a> {
         if let Err(e) = std::fs::write(self.file_path, &self.original) {
             eprintln!("FATAL: could not restore {}: {}", self.file_path, e);
         }
-        active_mutations()
-            .lock()
-            .unwrap()
-            .retain(|(p, _)| p != self.file_path);
+        locked_active_mutations().retain(|(p, _)| p != self.file_path);
     }
 }
 
@@ -179,7 +187,17 @@ pub fn read_lines<P>(file_path: P) -> Vec<String>
 where
     P: AsRef<Path>,
 {
-    let bytes = std::fs::read(&file_path).expect("Unable to read file");
+    let bytes = match std::fs::read(&file_path) {
+        Ok(b) => b,
+        Err(e) => {
+            warn!(
+                "Skipping unreadable '{}': {}",
+                file_path.as_ref().display(),
+                e
+            );
+            return Vec::new();
+        }
+    };
     let mut out: Vec<String> = Vec::new();
     for line in bytes.split(|&b| b == b'\n') {
         let trimmed = if line.last() == Some(&b'\r') {
