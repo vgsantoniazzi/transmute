@@ -1,22 +1,42 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require 'transmute/rspec'
+require 'json'
+require 'socket'
 
-socket_path = ENV['TRANSMUTE_RSPEC_SOCKET'] || Transmute::Rspec::Server::DEFAULT_SOCKET
+DEFAULT_SOCKET = '/tmp/transmute-rspec.sock'
+
+socket_path = ENV['TRANSMUTE_RSPEC_SOCKET'] || DEFAULT_SOCKET
 spec_path = ARGV[0]
 
 if spec_path.nil? || spec_path.empty?
-  warn 'Usage: transmute-rspec-run <spec_file>'
+  warn 'usage: transmute-rspec-run <spec_file>'
   exit 2
 end
+
+open_socket =
+  if socket_path.start_with?('tcp://')
+    host_port = socket_path.sub(%r{^tcp://}, '')
+    host, port = host_port.split(':')
+    ->(&block) { TCPSocket.open(host, Integer(port), &block) }
+  else
+    ->(&block) { UNIXSocket.open(socket_path, &block) }
+  end
 
 begin
-  response = Transmute::Rspec::Client.new(socket_path: socket_path).run(spec_path)
+  open_socket.call do |sock|
+    sock.puts(JSON.generate({ action: 'run', spec: spec_path }))
+    line = sock.gets
+    if line.nil? || line.empty?
+      warn "transmute-rspec-run: daemon at #{socket_path} closed the connection without responding"
+      exit 2
+    end
+
+    response = JSON.parse(line)
+    $stdout.write(response['stdout'].to_s)
+    exit Integer(response['exit_code'] || 2)
+  end
 rescue Errno::ENOENT, Errno::ECONNREFUSED
-  warn "transmute-rspec-run: daemon not listening on #{socket_path}; start it with 'bundle exec transmute-rspec serve'"
+  warn "transmute-rspec-run: daemon not reachable at #{socket_path}; start it with 'bundle exec transmute-rspec serve'"
   exit 2
 end
-
-$stdout.write(response['stdout'].to_s)
-exit Integer(response['exit_code'] || 2)
