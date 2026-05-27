@@ -81,6 +81,7 @@ impl File {
 }
 
 impl MutableItem {
+    #[allow(dead_code)]
     pub fn transmute(&self, file_path: &str) {
         let original = std::fs::read(file_path).expect("Unable to read file");
         self.write_mutation(&original, file_path);
