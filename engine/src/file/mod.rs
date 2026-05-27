@@ -10,6 +10,8 @@ mod ruby;
 #[derive(Debug, Clone, Serialize)]
 pub struct MutableItem {
     pub line_number: u16,
+    pub start: usize,
+    pub end: usize,
     pub implementation: String,
     pub content: String,
     pub replace: String,
@@ -92,27 +94,17 @@ impl MutableItem {
             let mut file =
                 std::fs::File::create(&tmp_path).expect("Can't open file for writing");
             let mut line_counter = 0;
-            for line_content in file_content {
+            for mut line_content in file_content {
                 line_counter += 1;
                 if line_counter == self.line_number {
                     if transmute {
-                        write!(
-                            file,
-                            "{}\n",
-                            line_content.replace(&self.content, &self.replace)
-                        )
-                        .unwrap();
+                        line_content.replace_range(self.start..self.end, &self.replace);
                     } else {
-                        write!(
-                            file,
-                            "{}\n",
-                            line_content.replace(&self.replace, &self.content)
-                        )
-                        .unwrap();
+                        let end = self.start + self.replace.len();
+                        line_content.replace_range(self.start..end, &self.content);
                     }
-                } else {
-                    write!(file, "{}\n", line_content).unwrap();
                 }
+                writeln!(file, "{}", line_content).unwrap();
             }
         }
         std::fs::rename(&tmp_path, file_path).expect("Can't rename mutated file");

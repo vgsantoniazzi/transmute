@@ -43,6 +43,8 @@ fn test_source_file_restored_when_caller_panics() {
 
     let item = file::MutableItem {
         line_number: 1,
+        start: 5,
+        end: 7,
         implementation: "puts 42".to_string(),
         content: "42".to_string(),
         replace: "999".to_string(),
@@ -69,6 +71,8 @@ fn test_source_file_restored_when_guard_dropped_normally() {
 
     let item = file::MutableItem {
         line_number: 1,
+        start: 5,
+        end: 7,
         implementation: "puts 42".to_string(),
         content: "42".to_string(),
         replace: "999".to_string(),
@@ -98,6 +102,8 @@ fn test_change_content_is_atomic_when_write_target_unavailable() {
 
     let item = file::MutableItem {
         line_number: 2,
+        start: 5,
+        end: 7,
         implementation: "puts 42".to_string(),
         content: "42".to_string(),
         replace: "999".to_string(),
