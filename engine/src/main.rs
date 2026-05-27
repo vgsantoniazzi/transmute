@@ -60,6 +60,14 @@ fn main() {
 
     info!("Starting transmute.");
 
+    if !["json", "html"].contains(&args.formatter.as_str()) {
+        eprintln!(
+            "transmute: unknown --formatter '{}'; valid: json, html",
+            args.formatter
+        );
+        exit(2);
+    }
+
     let coverage = match coverage::Coverage::load(&args.coverage) {
         Ok(c) => c,
         Err(e) => {
@@ -84,7 +92,16 @@ fn main() {
                 continue 'mutate;
             }
 
-            let _guard = file::MutationGuard::apply(&file.path, mutable);
+            let _guard = match file::MutationGuard::apply(&file.path, mutable) {
+                Ok(g) => g,
+                Err(e) => {
+                    warn!(
+                        "Could not apply mutation to {}: {}; skipping.",
+                        file.path, e
+                    );
+                    continue 'mutate;
+                }
+            };
 
             for spec_file in specs.iter() {
                 let (exit_code, stdout) =

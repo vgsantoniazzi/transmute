@@ -45,7 +45,7 @@ fn generate_html(analytics: &mut AnalyticsResult, output_path: &str) {
     let content = tera
         .render("index.html", &context)
         .expect("HTML template must render with the analytics model");
-    fs::write(output_path, content).expect("Unable to write file");
+    write_or_fallback(output_path, &content);
 }
 
 fn generate_json(analytics: &mut AnalyticsResult, output_path: &str) {
@@ -55,5 +55,15 @@ fn generate_json(analytics: &mut AnalyticsResult, output_path: &str) {
     };
     let content = serde_json::to_string_pretty(&report)
         .expect("AnalyticsResult must be serializable to JSON");
-    fs::write(output_path, content).expect("Unable to write file");
+    write_or_fallback(output_path, &content);
+}
+
+fn write_or_fallback(output_path: &str, content: &str) {
+    if let Err(e) = fs::write(output_path, content) {
+        eprintln!(
+            "transmute: failed to write {}: {}; dumping report to stdout",
+            output_path, e
+        );
+        println!("{}", content);
+    }
 }

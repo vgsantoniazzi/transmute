@@ -132,15 +132,15 @@ pub struct MutationGuard<'a> {
 }
 
 impl<'a> MutationGuard<'a> {
-    pub fn apply(file_path: &'a str, item: &MutableItem) -> MutationGuard<'a> {
-        let original = std::fs::read(file_path).expect("Unable to read file");
+    pub fn apply(file_path: &'a str, item: &MutableItem) -> std::io::Result<MutationGuard<'a>> {
+        let original = std::fs::read(file_path)?;
         *active_mutation().lock().unwrap() = Some((file_path.to_string(), original.clone()));
         let guard = MutationGuard {
             file_path,
             original,
         };
         item.transmute(file_path);
-        guard
+        Ok(guard)
     }
 }
 

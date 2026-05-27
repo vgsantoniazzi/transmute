@@ -112,6 +112,23 @@ fn test_transmute_aborts_when_target_bytes_no_longer_match() {
 }
 
 #[test]
+fn test_guard_apply_returns_err_when_source_file_missing() {
+    let item = file::MutableItem {
+        line_number: 1,
+        start: 0,
+        end: 1,
+        implementation: "x".to_string(),
+        content: "x".to_string(),
+        replace: "y".to_string(),
+    };
+    let result = file::MutationGuard::apply("/nonexistent/path/to/missing.rb", &item);
+    assert!(
+        result.is_err(),
+        "Missing source file must surface as Err, not panic"
+    );
+}
+
+#[test]
 fn test_drop_removes_lingering_tmp_file() {
     let scratch = scratch_path("drop_tmp");
     std::fs::write(&scratch, b"puts 42\n").unwrap();
@@ -126,7 +143,7 @@ fn test_drop_removes_lingering_tmp_file() {
         replace: "99".to_string(),
     };
     {
-        let _g = file::MutationGuard::apply(scratch.to_str().unwrap(), &item);
+        let _g = file::MutationGuard::apply(scratch.to_str().unwrap(), &item).unwrap();
         std::fs::write(&tmp, b"leftover").unwrap();
     }
 
@@ -180,7 +197,7 @@ fn test_source_file_restored_when_caller_panics() {
 
     let path = scratch.clone();
     let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-        let _guard = file::MutationGuard::apply(path.to_str().unwrap(), &item);
+        let _guard = file::MutationGuard::apply(path.to_str().unwrap(), &item).unwrap();
         panic!("simulated runner failure");
     }));
     assert!(result.is_err());
@@ -207,7 +224,7 @@ fn test_source_file_restored_when_guard_dropped_normally() {
     };
 
     {
-        let _guard = file::MutationGuard::apply(scratch.to_str().unwrap(), &item);
+        let _guard = file::MutationGuard::apply(scratch.to_str().unwrap(), &item).unwrap();
         let mid = std::fs::read_to_string(&scratch).unwrap();
         assert!(
             mid.contains("999"),

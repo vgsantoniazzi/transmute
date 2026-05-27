@@ -11,8 +11,12 @@ fn scratch_dir(name: &str) -> PathBuf {
 }
 
 fn write_coverage_for(rb_path: &Path, line: u32, cov_path: &Path) {
-    let cwd = std::env::current_dir().unwrap();
-    let key = format!("{}/{}:{}", cwd.display(), rb_path.display(), line);
+    let key = if rb_path.is_absolute() {
+        format!("{}:{}", rb_path.display(), line)
+    } else {
+        let cwd = std::env::current_dir().unwrap();
+        format!("{}/{}:{}", cwd.display(), rb_path.display(), line)
+    };
     let content = format!(r#"{{"{}": ["dummy_spec.rb"]}}"#, key);
     std::fs::write(cov_path, content).unwrap();
 }
