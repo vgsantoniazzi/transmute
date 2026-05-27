@@ -1,11 +1,10 @@
 use glob::glob;
 use log::{info, warn};
-use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::{Mutex, OnceLock};
 
-use crate::analytics::{AnalyticsResult, MutationResult};
+use crate::analytics::AnalyticsResult;
 use crate::worktree::{ensure_clean_tree, Worktree};
 
 static ACTIVE_WORKER_PIDS: OnceLock<Mutex<Vec<u32>>> = OnceLock::new();
@@ -31,54 +30,62 @@ pub fn kill_active_workers() {
     }
 }
 
-pub struct ParallelInput<'a> {
-    pub files: &'a str,
-    pub coverage: &'a str,
-    pub command: &'a str,
-    pub log_level: &'a str,
-    pub timeout: u64,
-    pub seed: u64,
-    pub max_specs_per_mutation: usize,
-    pub jobs: usize,
-    pub setup_command: Option<&'a str>,
-}
-
 pub struct ParallelResult {
     pub analytics: AnalyticsResult,
     pub any_worker_failed_to_produce_output: bool,
 }
 
-pub fn run(input: &ParallelInput<'_>) -> Result<ParallelResult, String> {
+#[allow(clippy::too_many_arguments)]
+pub fn run(
+    files: &str,
+    coverage: &str,
+    command: &str,
+    log_level: &str,
+    timeout: u64,
+    seed: u64,
+    max_specs_per_mutation: Option<usize>,
+    jobs: usize,
+    setup_command: Option<&str>,
+) -> Result<ParallelResult, String> {
     let repo =
         std::env::current_dir().map_err(|e| format!("could not read current directory: {}", e))?;
     ensure_clean_tree(&repo)?;
 
-    let coverage_path = std::fs::canonicalize(input.coverage)
-        .map_err(|e| format!("--coverage path '{}' not found: {}", input.coverage, e))?;
+    let coverage_path = std::fs::canonicalize(coverage)
+        .map_err(|e| format!("--coverage path '{}' not found: {}", coverage, e))?;
     require_coverage_cwd(&coverage_path)?;
 
-    let files = expand_files(&repo, input.files);
-    if files.is_empty() {
+    let resolved_files = expand_files(&repo, files);
+    if resolved_files.is_empty() {
         return Err(format!(
             "--files pattern '{}' matched no files; nothing to mutate",
-            input.files
+            files
         ));
     }
 
-    let jobs = input.jobs.min(files.len()).max(1);
-    let partitions = partition_round_robin(&files, jobs);
+    let job_count = jobs.min(resolved_files.len()).max(1);
+    let partitions = partition_round_robin(&resolved_files, job_count);
     info!(
         "parallel: {} files across {} workers ({} files/worker avg)",
-        files.len(),
-        jobs,
-        files.len() / jobs
+        resolved_files.len(),
+        job_count,
+        resolved_files.len() / job_count
     );
 
-    let worktrees = create_worktrees(&repo, jobs, input.setup_command)?;
+    let worktrees = create_worktrees(&repo, job_count, setup_command)?;
     let exe = std::env::current_exe()
         .map_err(|e| format!("could not resolve current executable: {}", e))?;
-    let (children, output_paths) =
-        spawn_workers(&exe, &worktrees, &partitions, &coverage_path, input)?;
+    let (children, output_paths) = spawn_workers(
+        &exe,
+        &worktrees,
+        &partitions,
+        &coverage_path,
+        command,
+        log_level,
+        timeout,
+        seed,
+        max_specs_per_mutation,
+    )?;
     let any_worker_failed = wait_for_workers(children);
 
     let any_output_missing = output_paths.iter().any(|p| !p.exists());
@@ -193,12 +200,17 @@ fn create_worktrees(
     Ok(worktrees)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_workers(
     exe: &Path,
     worktrees: &[Worktree],
     partitions: &[Vec<FileEntry>],
     coverage_path: &Path,
-    input: &ParallelInput<'_>,
+    command: &str,
+    log_level: &str,
+    timeout: u64,
+    seed: u64,
+    max_specs_per_mutation: Option<usize>,
 ) -> Result<(Vec<Child>, Vec<PathBuf>), String> {
     let mut children = Vec::with_capacity(worktrees.len());
     let mut outputs = Vec::with_capacity(worktrees.len());
@@ -216,28 +228,31 @@ fn spawn_workers(
             wt.path().display()
         );
 
-        let child = Command::new(exe)
-            .arg("--files")
+        let mut cmd = Command::new(exe);
+        cmd.arg("--files")
             .arg(&files_arg)
             .arg("--coverage")
             .arg(coverage_path)
             .arg("--command")
-            .arg(input.command)
+            .arg(command)
             .arg("--formatter")
             .arg("json")
             .arg("--output")
             .arg(&output_path)
-            .arg("--max-specs-per-mutation")
-            .arg(input.max_specs_per_mutation.to_string())
             .arg("--log-level")
-            .arg(input.log_level)
+            .arg(log_level)
             .arg("--timeout")
-            .arg(input.timeout.to_string())
+            .arg(timeout.to_string())
             .arg("--seed")
-            .arg(input.seed.to_string())
+            .arg(seed.to_string())
             .arg("--jobs")
             .arg("1")
-            .current_dir(wt.path())
+            .current_dir(wt.path());
+        if let Some(n) = max_specs_per_mutation {
+            cmd.arg("--max-specs-per-mutation").arg(n.to_string());
+        }
+
+        let child = cmd
             .spawn()
             .map_err(|e| format!("failed to spawn worker {}: {}", i, e))?;
 
@@ -285,15 +300,9 @@ fn wait_for_workers(mut children: Vec<Child>) -> bool {
     any_failed
 }
 
-#[derive(Deserialize)]
-struct WorkerReport {
-    analytics: WorkerAnalytics,
-}
-
-#[derive(Deserialize)]
-struct WorkerAnalytics {
-    files_count: usize,
-    mutations: Vec<MutationResult>,
+#[derive(serde::Deserialize)]
+struct WrappedReport {
+    analytics: AnalyticsResult,
 }
 
 fn merge_outputs(paths: &[PathBuf]) -> AnalyticsResult {
@@ -310,7 +319,7 @@ fn merge_outputs(paths: &[PathBuf]) -> AnalyticsResult {
                 continue;
             }
         };
-        let report: WorkerReport = match serde_json::from_str(&content) {
+        let report: WrappedReport = match serde_json::from_str(&content) {
             Ok(r) => r,
             Err(e) => {
                 warn!("worker output {} was not valid JSON: {}", path.display(), e);

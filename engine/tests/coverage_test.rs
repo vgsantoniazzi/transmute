@@ -33,25 +33,6 @@ fn test_load_returns_err_when_file_not_found() {
 }
 
 #[test]
-fn test_load_returns_err_with_migration_hint_when_path_has_json_extension() {
-    let mut path = std::env::temp_dir();
-    path.push(format!("transmute_test_{}_legacy.json", std::process::id()));
-    std::fs::write(&path, r#"{"some_file.rb:1": ["spec.rb"]}"#).unwrap();
-
-    let err = match coverage::Coverage::load(path.to_str().unwrap()) {
-        Err(e) => e,
-        Ok(_) => panic!("Legacy .json path should return Err"),
-    };
-    assert!(
-        err.contains("legacy JSON format") && err.contains("transmute.sqlite"),
-        "Error must point users at the migration path; got: {}",
-        err
-    );
-
-    std::fs::remove_file(&path).ok();
-}
-
-#[test]
 fn test_load_returns_err_with_migration_hint_when_content_starts_with_brace() {
     let path = fixture_path("json_no_ext");
     std::fs::write(&path, r#"{"some_file.rb:1": ["spec.rb"]}"#).unwrap();
@@ -137,12 +118,12 @@ fn test_find_normalizes_curdir_components_in_path() {
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
     assert_eq!(
-        cov.find("./a/b.rb", 1, 0).specs,
+        cov.find("./a/b.rb", 1, None).specs,
         vec!["spec.rb".to_string()],
         "Leading './' must be stripped before lookup"
     );
     assert_eq!(
-        cov.find("a/./b.rb", 1, 0).specs,
+        cov.find("a/./b.rb", 1, None).specs,
         vec!["spec.rb".to_string()],
         "Mid-path './' segment must be normalized away"
     );
@@ -158,7 +139,7 @@ fn test_find_returns_specs_when_file_path_is_absolute() {
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
     assert_eq!(
-        cov.find(&abs_file, 3, 0).specs,
+        cov.find(&abs_file, 3, None).specs,
         ["./spec/user_spec.rb"],
         "Absolute file path must look up the same key the gem wrote"
     );
@@ -173,7 +154,7 @@ fn test_find_returns_specs_for_known_line() {
     common::write_fixture(&path, &[(abs.as_str(), 3, &["./spec/user_spec.rb"])]);
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    let m = cov.find("tests/fixtures/app/user.rb", 3, 0);
+    let m = cov.find("tests/fixtures/app/user.rb", 3, None);
     assert_eq!(m.specs, ["./spec/user_spec.rb"]);
     assert_eq!(m.total, 1);
 
@@ -187,7 +168,7 @@ fn test_find_returns_empty_when_key_missing() {
     common::write_fixture(&path, &[(abs.as_str(), 3, &["./spec/user_spec.rb"])]);
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    let m = cov.find("not-found.rs", 1, 0);
+    let m = cov.find("not-found.rs", 1, None);
     let expected: Vec<String> = Vec::new();
     assert_eq!(m.specs, expected);
     assert_eq!(m.total, 0, "no covering specs => total is zero (uncovered)");
@@ -214,7 +195,7 @@ fn test_find_orders_specs_by_lines_of_target_file_descending() {
     );
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    let m = cov.find("app/user.rb", 1, 0);
+    let m = cov.find("app/user.rb", 1, None);
     assert_eq!(
         m.specs,
         vec!["wide_spec.rb".to_string(), "narrow_spec.rb".to_string()],
@@ -235,7 +216,7 @@ fn test_find_breaks_ties_alphabetically_by_spec_path() {
     );
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    let m = cov.find("app/user.rb", 1, 0);
+    let m = cov.find("app/user.rb", 1, None);
     assert_eq!(
         m.specs,
         vec![
@@ -263,7 +244,7 @@ fn test_find_caps_specs_when_max_specs_is_nonzero() {
     );
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    let m = cov.find("app/user.rb", 1, 3);
+    let m = cov.find("app/user.rb", 1, Some(3));
     assert_eq!(m.specs.len(), 3);
     assert_eq!(m.total, 5, "total reflects covering set before truncation");
 
@@ -280,7 +261,7 @@ fn test_find_does_not_truncate_when_max_specs_is_zero() {
     );
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    let m = cov.find("app/user.rb", 1, 0);
+    let m = cov.find("app/user.rb", 1, None);
     assert_eq!(m.specs.len(), 3);
     assert_eq!(m.total, 3);
 
@@ -368,7 +349,7 @@ fn test_find_translates_relative_path_through_stored_cwd() {
     drop(conn);
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    let m = cov.find("app/user.rb", 1, 0);
+    let m = cov.find("app/user.rb", 1, None);
     assert_eq!(
         m.specs,
         vec!["spec.rb".to_string()],
@@ -391,7 +372,7 @@ fn test_find_translates_absolute_path_under_runtime_cwd() {
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
     let abs_runtime = absolute("lib/util.rb");
-    let m = cov.find(&abs_runtime, 7, 0);
+    let m = cov.find(&abs_runtime, 7, None);
     assert_eq!(
         m.specs,
         vec!["util_spec.rb".to_string()],
@@ -413,7 +394,7 @@ fn test_find_does_not_translate_absolute_path_outside_runtime_cwd() {
     drop(conn);
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    let m = cov.find(foreign_file, 1, 0);
+    let m = cov.find(foreign_file, 1, None);
     assert_eq!(
         m.specs,
         vec!["weird_spec.rb".to_string()],
@@ -435,7 +416,7 @@ fn test_find_skips_translation_when_stored_cwd_matches_runtime_cwd() {
     drop(conn);
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    let m = cov.find("app/user.rb", 1, 0);
+    let m = cov.find("app/user.rb", 1, None);
     assert_eq!(
         m.specs,
         vec!["spec.rb".to_string()],
@@ -455,7 +436,7 @@ fn test_find_returns_full_set_when_covering_count_equals_max_specs() {
     );
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    let m = cov.find("app/user.rb", 1, 3);
+    let m = cov.find("app/user.rb", 1, Some(3));
     assert_eq!(m.specs.len(), 3, "n == limit => no truncation");
     assert_eq!(m.total, 3);
 

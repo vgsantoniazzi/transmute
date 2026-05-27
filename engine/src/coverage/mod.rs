@@ -48,11 +48,18 @@ impl Coverage {
             )
         })?;
 
-        let coverage_cwd = read_schema_meta(&conn, "cwd");
+        let coverage_cwd: Option<String> = conn
+            .query_row(
+                "SELECT value FROM schema_meta WHERE key = 'cwd'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .ok()
+            .flatten();
 
         let cov = Coverage { conn, coverage_cwd };
-        cov.warn_if_coverage_table_is_empty();
-        cov.warn_if_no_coverage_files_match_capture_cwd();
+        cov.warn_about_data_health();
         Ok(cov)
     }
 
@@ -60,10 +67,10 @@ impl Coverage {
         self.coverage_cwd.as_deref()
     }
 
-    pub fn find(&self, file: &str, line: u32, max_specs: usize) -> CoverageMatch {
+    pub fn find(&self, file: &str, line: u32, max_specs: Option<usize>) -> CoverageMatch {
         let key = self.canonical_key(file);
         trace!(
-            "loading specs for {}:{} (max_specs={})",
+            "loading specs for {}:{} (max_specs={:?})",
             key,
             line,
             max_specs
@@ -86,20 +93,15 @@ impl Coverage {
         covering.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.2.cmp(&b.2)));
 
         let total = covering.len();
-        let limit = if max_specs == 0 {
-            usize::MAX
-        } else {
-            max_specs
-        };
         let specs: Vec<String> = covering
             .into_iter()
-            .take(limit)
+            .take(max_specs.unwrap_or(usize::MAX))
             .map(|(_, _, p)| p)
             .collect();
 
         if specs.len() < total {
             trace!(
-                "filtered {}:{} specs from {} to {} (max_specs={})",
+                "filtered {}:{} specs from {} to {} (max_specs={:?})",
                 key,
                 line,
                 total,
@@ -122,9 +124,14 @@ impl Coverage {
             format!("{}/{}", runtime_cwd(), normalized.display())
         };
 
-        match self.coverage_cwd.as_deref() {
-            Some(stored) if stored != runtime_cwd() => translate_path(&absolute, stored),
-            _ => absolute,
+        let stored = match self.coverage_cwd.as_deref() {
+            Some(s) if s != runtime_cwd() => s,
+            _ => return absolute,
+        };
+        let runtime_prefix = format!("{}/", runtime_cwd());
+        match absolute.strip_prefix(&runtime_prefix) {
+            Some(rest) => format!("{}/{}", stored, rest),
+            None => absolute,
         }
     }
 
@@ -153,33 +160,27 @@ impl Coverage {
         rows.collect()
     }
 
-    fn warn_if_coverage_table_is_empty(&self) {
-        let count: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM coverage", [], |row| row.get(0))
-            .unwrap_or(0);
-        if count == 0 {
-            warn!(
-                "Coverage database has zero rows. Every mutation will be reported as surviving with no covering spec; the report will be uninformative. Re-generate coverage from your test suite."
-            );
-        }
-    }
-
-    fn warn_if_no_coverage_files_match_capture_cwd(&self) {
+    fn warn_about_data_health(&self) {
         let prefix_root = self
             .coverage_cwd
             .as_deref()
             .unwrap_or_else(|| runtime_cwd());
         let pattern = format!("{}/%", prefix_root);
-        let any: i64 = self
+        let (row_count, any_cwd_match): (i64, i64) = self
             .conn
             .query_row(
-                "SELECT EXISTS (SELECT 1 FROM files WHERE path LIKE ?1)",
+                "SELECT (SELECT COUNT(*) FROM coverage),
+                        EXISTS (SELECT 1 FROM files WHERE path LIKE ?1)",
                 params![pattern],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .unwrap_or(0);
-        if any == 0 {
+            .unwrap_or((0, 0));
+        if row_count == 0 {
+            warn!(
+                "Coverage database has zero rows. Every mutation will be reported as surviving with no covering spec; the report will be uninformative. Re-generate coverage from your test suite."
+            );
+        }
+        if any_cwd_match == 0 {
             warn!(
                 "No coverage files match '{}'. Re-run coverage from the same directory transmute runs from, or the lookup will always return empty.",
                 prefix_root
@@ -188,51 +189,12 @@ impl Coverage {
     }
 }
 
-fn translate_path(absolute_runtime_path: &str, stored_cwd: &str) -> String {
-    let runtime_prefix = format!("{}/", runtime_cwd());
-    match absolute_runtime_path.strip_prefix(&runtime_prefix) {
-        Some(rest) => format!("{}/{}", stored_cwd, rest),
-        None => absolute_runtime_path.to_string(),
-    }
-}
-
-fn read_schema_meta(conn: &Connection, key: &str) -> Option<String> {
-    conn.query_row(
-        "SELECT value FROM schema_meta WHERE key = ?1",
-        params![key],
-        |row| row.get(0),
-    )
-    .optional()
-    .ok()
-    .flatten()
-}
-
 fn looks_like_json_coverage(file_path: &str) -> bool {
     use std::io::Read;
-
-    let mut file = match std::fs::File::open(file_path) {
-        Ok(f) => f,
-        Err(_) => return false,
-    };
-
-    let mut header = [0u8; 16];
-    let read = match file.read(&mut header) {
-        Ok(n) => n,
-        Err(_) => return false,
-    };
-
-    if read >= 16 && &header == b"SQLite format 3\0" {
-        return false;
-    }
-
-    if read >= 1 && matches!(header[0], b'{' | b'[') {
-        return true;
-    }
-
-    Path::new(file_path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.eq_ignore_ascii_case("json"))
+    let mut header = [0u8; 1];
+    std::fs::File::open(file_path)
+        .and_then(|mut f| f.read(&mut header))
+        .map(|n| n >= 1 && matches!(header[0], b'{' | b'['))
         .unwrap_or(false)
 }
 

@@ -13,7 +13,7 @@ pub struct MutationResult {
     pub specs_total: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AnalyticsResult {
     pub files_count: usize,
     pub mutations: Vec<MutationResult>,

@@ -4,7 +4,7 @@ use std::process::exit;
 use std::time::Duration;
 
 use transmute::file::ruby as ruby_mod;
-use transmute::parallel::{self, ParallelInput};
+use transmute::parallel;
 use transmute::worktree;
 use transmute::{analytics, coverage, file, formatter, runner};
 
@@ -24,9 +24,9 @@ struct Args {
     #[clap(long, default_value = "transmute.sqlite")]
     coverage: String,
 
-    /// Cap how many specs run per mutation. 0 = unlimited (default; matches pre-0.2 semantics). For each (file, line), specs are ranked by how many lines of that file they cover (more = closer), and the top N run. Survivors produced under a cap are tagged low_confidence_failures.
-    #[clap(long, default_value = "0")]
-    max_specs_per_mutation: usize,
+    /// Cap how many specs run per mutation. Omit for unlimited (default; matches pre-0.2 semantics). For each (file, line), specs are ranked by how many lines of that file they cover (more = closer), and the top N run. Survivors produced under a cap are tagged low_confidence_failures.
+    #[clap(long)]
+    max_specs_per_mutation: Option<usize>,
 
     /// Number of parallel workers. 1 = serial (default). N > 1 partitions files across N git worktrees and runs them concurrently. Requires a clean working tree and coverage produced by transmute-ruby 0.3+.
     #[clap(long, default_value = "1")]
@@ -86,13 +86,13 @@ fn main() {
 
     if args.jobs > 1 {
         info!(
-            "Starting transmute (jobs={}, max-specs-per-mutation={}).",
+            "Starting transmute (jobs={}, max-specs-per-mutation={:?}).",
             args.jobs, args.max_specs_per_mutation
         );
         run_parallel(&args);
     } else {
         info!(
-            "Starting transmute (max-specs-per-mutation={}).",
+            "Starting transmute (max-specs-per-mutation={:?}).",
             args.max_specs_per_mutation
         );
         run_serial(&args);
@@ -110,19 +110,18 @@ fn run_parallel(args: &Args) -> ! {
     } else {
         Some(args.setup_command.as_str())
     };
-    let input = ParallelInput {
-        files: &args.files,
-        coverage: &args.coverage,
-        command: &args.command,
-        log_level: &args.log_level,
-        timeout: args.timeout,
-        seed: args.seed,
-        max_specs_per_mutation: args.max_specs_per_mutation,
-        jobs: args.jobs,
-        setup_command: setup,
-    };
 
-    match parallel::run(&input) {
+    match parallel::run(
+        &args.files,
+        &args.coverage,
+        &args.command,
+        &args.log_level,
+        args.timeout,
+        args.seed,
+        args.max_specs_per_mutation,
+        args.jobs,
+        setup,
+    ) {
         Ok(result) => {
             let failures = result.analytics.failures();
             formatter::generate(result.analytics, &args.formatter, &args.output);
