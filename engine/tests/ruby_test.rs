@@ -124,6 +124,83 @@ fn test_operator_mutation_chooses_diverse_replacement() {
 }
 
 #[test]
+fn test_strings_treat_escaped_quotes_as_part_of_literal() {
+    let (path, items) = mutations_for(r#"puts "He said \"hi\"""#, "escaped_quotes");
+    let strings: Vec<_> = items
+        .iter()
+        .filter(|m| m.content.starts_with('"'))
+        .collect();
+    assert_eq!(
+        strings.len(),
+        1,
+        "Escaped quotes should not split the literal; got: {:?}",
+        strings
+    );
+    assert_eq!(
+        strings[0].content,
+        r#""He said \"hi\"""#,
+        "Captured content should be the full literal, not truncated at the first escaped quote"
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_single_quoted_strings_are_detected() {
+    let (path, items) = mutations_for("puts 'hello world'", "single_quoted");
+    let strings: Vec<_> = items
+        .iter()
+        .filter(|m| m.content.starts_with('\''))
+        .collect();
+    assert_eq!(
+        strings.len(),
+        1,
+        "Expected one single-quoted string mutation; got: {:?}",
+        items
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_single_quoted_strings_inside_double_quoted_are_ignored() {
+    let (path, items) = mutations_for(r#"puts "outer 'inner' tail""#, "nested_quotes");
+    let single: Vec<_> = items
+        .iter()
+        .filter(|m| m.content.starts_with('\''))
+        .collect();
+    assert!(
+        single.is_empty(),
+        "'inner' inside a double-quoted literal should not produce its own mutation; got: {:?}",
+        single
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_symbols_inside_array_literal_are_detected() {
+    let (path, items) = mutations_for("[:a, :b]", "symbols_in_array");
+    let syms: Vec<_> = items.iter().filter(|m| m.content.starts_with(':')).collect();
+    assert_eq!(
+        syms.len(),
+        2,
+        "Expected two symbol mutations; got: {:?}",
+        items
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_module_path_double_colon_is_not_a_symbol() {
+    let (path, items) = mutations_for("Module::Foo.call", "module_path");
+    let syms: Vec<_> = items.iter().filter(|m| m.content.starts_with(':')).collect();
+    assert!(
+        syms.is_empty(),
+        "'::Foo' is a constant path, not a symbol; got: {:?}",
+        syms
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
 fn test_ge_and_le_operators_are_matched_as_pairs() {
     let (path, items) = mutations_for("a >= b && c <= d", "ge_le");
     let contents: Vec<&String> = items.iter().map(|m| &m.content).collect();
