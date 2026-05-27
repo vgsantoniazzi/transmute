@@ -80,6 +80,40 @@ fn test_exits_zero_when_no_specs_cover_any_mutation() -> Result<(), Box<dyn std:
 }
 
 #[test]
+fn test_writes_json_with_failure_count_to_custom_output_path(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = scratch_dir("output_path");
+    let rb_path = dir.join("scratch.rb");
+    std::fs::write(&rb_path, "puts 42\n").unwrap();
+    let cov_path = dir.join("cov.json");
+    std::fs::write(&cov_path, "{}").unwrap();
+    let output_path = dir.join("custom.json");
+
+    let mut cmd = Command::cargo_bin("transmute")?;
+    cmd.arg("--coverage").arg(cov_path.to_str().unwrap());
+    cmd.arg("--files").arg(rb_path.to_str().unwrap());
+    cmd.arg("--command").arg("sh -c true");
+    cmd.arg("--output").arg(output_path.to_str().unwrap());
+    cmd.arg("--log-level").arg("warn");
+
+    cmd.assert().success();
+    assert!(
+        output_path.exists(),
+        "Output should be written to specified --output path"
+    );
+
+    let content = std::fs::read_to_string(&output_path).unwrap();
+    assert!(
+        content.contains(r#""failures""#),
+        "JSON output should include the failures count; got: {}",
+        content
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+    Ok(())
+}
+
+#[test]
 fn test_warns_when_coverage_keys_do_not_match_cwd() -> Result<(), Box<dyn std::error::Error>> {
     let dir = scratch_dir("cwd_mismatch");
     let rb_path = dir.join("scratch.rb");

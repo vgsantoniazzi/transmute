@@ -40,6 +40,10 @@ struct Args {
     /// per-spec timeout in seconds
     #[clap(long, default_value = "600")]
     timeout: u64,
+
+    /// output file path (defaults to result.json for json formatter, index.html for html)
+    #[clap(long, default_value = "")]
+    output: String,
 }
 
 fn main() {
@@ -95,7 +99,7 @@ fn main() {
         }
     }
 
-    formatter::generate(analytics, args.formatter);
+    formatter::generate(analytics, &args.formatter, &args.output);
 
     exit(if failed { 1 } else { 0 });
 }
