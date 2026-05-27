@@ -287,6 +287,164 @@ fn test_find_does_not_truncate_when_max_specs_is_zero() {
     std::fs::remove_file(&path).ok();
 }
 
+fn insert_meta(conn: &rusqlite::Connection, key: &str, value: &str) {
+    conn.execute(
+        "INSERT OR REPLACE INTO schema_meta (key, value) VALUES (?1, ?2)",
+        rusqlite::params![key, value],
+    )
+    .unwrap();
+}
+
+fn insert_one_row(conn: &rusqlite::Connection, file: &str, line: u32, spec: &str) {
+    conn.execute(
+        "INSERT OR IGNORE INTO files (path) VALUES (?1)",
+        rusqlite::params![file],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT OR IGNORE INTO specs (path) VALUES (?1)",
+        rusqlite::params![spec],
+    )
+    .unwrap();
+    let file_id: i64 = conn
+        .query_row(
+            "SELECT id FROM files WHERE path = ?1",
+            rusqlite::params![file],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let spec_id: i64 = conn
+        .query_row(
+            "SELECT id FROM specs WHERE path = ?1",
+            rusqlite::params![spec],
+            |r| r.get(0),
+        )
+        .unwrap();
+    conn.execute(
+        "INSERT OR IGNORE INTO coverage (file_id, line, spec_id) VALUES (?1, ?2, ?3)",
+        rusqlite::params![file_id, line, spec_id],
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_coverage_cwd_is_exposed_after_load() {
+    let path = fixture_path("cwd_exposed");
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    transmute::coverage::schema::initialize(&conn).unwrap();
+    insert_meta(&conn, "cwd", "/captured/at/this/path");
+    drop(conn);
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    assert_eq!(cov.coverage_cwd(), Some("/captured/at/this/path"));
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_coverage_cwd_is_none_when_schema_meta_lacks_it() {
+    let path = fixture_path("no_cwd_meta");
+    common::write_fixture(&path, &[]);
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    assert_eq!(
+        cov.coverage_cwd(),
+        None,
+        "Legacy DBs without cwd metadata must report None"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_find_translates_relative_path_through_stored_cwd() {
+    let path = fixture_path("translate_relative");
+    let captured_cwd = "/captured/somewhere";
+    let stored_file = format!("{}/app/user.rb", captured_cwd);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    transmute::coverage::schema::initialize(&conn).unwrap();
+    insert_meta(&conn, "cwd", captured_cwd);
+    insert_one_row(&conn, &stored_file, 1, "spec.rb");
+    drop(conn);
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let m = cov.find("app/user.rb", 1, 0);
+    assert_eq!(
+        m.specs,
+        vec!["spec.rb".to_string()],
+        "relative input resolved against runtime cwd, then translated through stored cwd"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_find_translates_absolute_path_under_runtime_cwd() {
+    let path = fixture_path("translate_absolute_under");
+    let captured_cwd = "/captured/elsewhere";
+    let stored_file = format!("{}/lib/util.rb", captured_cwd);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    transmute::coverage::schema::initialize(&conn).unwrap();
+    insert_meta(&conn, "cwd", captured_cwd);
+    insert_one_row(&conn, &stored_file, 7, "util_spec.rb");
+    drop(conn);
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let abs_runtime = absolute("lib/util.rb");
+    let m = cov.find(&abs_runtime, 7, 0);
+    assert_eq!(
+        m.specs,
+        vec!["util_spec.rb".to_string()],
+        "absolute input under runtime cwd must be translated to stored cwd prefix"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_find_does_not_translate_absolute_path_outside_runtime_cwd() {
+    let path = fixture_path("translate_outside");
+    let captured_cwd = "/captured/elsewhere";
+    let foreign_file = "/strange/place/file.rb";
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    transmute::coverage::schema::initialize(&conn).unwrap();
+    insert_meta(&conn, "cwd", captured_cwd);
+    insert_one_row(&conn, foreign_file, 1, "weird_spec.rb");
+    drop(conn);
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let m = cov.find(foreign_file, 1, 0);
+    assert_eq!(
+        m.specs,
+        vec!["weird_spec.rb".to_string()],
+        "Absolute paths outside runtime cwd must look up as-is, not be translated"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_find_skips_translation_when_stored_cwd_matches_runtime_cwd() {
+    let path = fixture_path("translate_noop");
+    let abs = absolute("app/user.rb");
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    transmute::coverage::schema::initialize(&conn).unwrap();
+    let runtime_cwd = std::env::current_dir().unwrap().display().to_string();
+    insert_meta(&conn, "cwd", &runtime_cwd);
+    insert_one_row(&conn, &abs, 1, "spec.rb");
+    drop(conn);
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let m = cov.find("app/user.rb", 1, 0);
+    assert_eq!(
+        m.specs,
+        vec!["spec.rb".to_string()],
+        "stored cwd == runtime cwd => no-op translation, direct lookup succeeds"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
 #[test]
 fn test_find_returns_full_set_when_covering_count_equals_max_specs() {
     let path = fixture_path("boundary");

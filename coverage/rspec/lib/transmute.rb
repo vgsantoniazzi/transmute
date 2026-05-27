@@ -97,6 +97,10 @@ class Transmute
         "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', ?)",
         [SCHEMA_VERSION]
       )
+      db.execute(
+        "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('cwd', ?)",
+        [Dir.pwd]
+      )
       write_entries(db)
     ensure
       db.close

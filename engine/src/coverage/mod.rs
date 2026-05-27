@@ -1,7 +1,7 @@
 pub mod schema;
 
 use log::{error, info, trace, warn};
-use rusqlite::{params, Connection, OpenFlags};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -14,6 +14,7 @@ pub struct CoverageMatch {
 
 pub struct Coverage {
     conn: Connection,
+    coverage_cwd: Option<String>,
 }
 
 impl Coverage {
@@ -47,14 +48,20 @@ impl Coverage {
             )
         })?;
 
-        let cov = Coverage { conn };
+        let coverage_cwd = read_schema_meta(&conn, "cwd");
+
+        let cov = Coverage { conn, coverage_cwd };
         cov.warn_if_coverage_table_is_empty();
-        cov.warn_if_no_coverage_files_match_cwd();
+        cov.warn_if_no_coverage_files_match_capture_cwd();
         Ok(cov)
     }
 
+    pub fn coverage_cwd(&self) -> Option<&str> {
+        self.coverage_cwd.as_deref()
+    }
+
     pub fn find(&self, file: &str, line: u32, max_specs: usize) -> CoverageMatch {
-        let key = canonical_key(file);
+        let key = self.canonical_key(file);
         trace!(
             "loading specs for {}:{} (max_specs={})",
             key,
@@ -104,6 +111,23 @@ impl Coverage {
         CoverageMatch { specs, total }
     }
 
+    fn canonical_key(&self, file: &str) -> String {
+        let normalized: std::path::PathBuf = Path::new(file)
+            .components()
+            .filter(|c| !matches!(c, std::path::Component::CurDir))
+            .collect();
+        let absolute = if normalized.is_absolute() {
+            normalized.display().to_string()
+        } else {
+            format!("{}/{}", runtime_cwd(), normalized.display())
+        };
+
+        match self.coverage_cwd.as_deref() {
+            Some(stored) if stored != runtime_cwd() => translate_path(&absolute, stored),
+            _ => absolute,
+        }
+    }
+
     fn query_covering_with_local_score(
         &self,
         key: &str,
@@ -141,23 +165,46 @@ impl Coverage {
         }
     }
 
-    fn warn_if_no_coverage_files_match_cwd(&self) {
-        let prefix = format!("{}/%", cwd());
+    fn warn_if_no_coverage_files_match_capture_cwd(&self) {
+        let prefix_root = self
+            .coverage_cwd
+            .as_deref()
+            .unwrap_or_else(|| runtime_cwd());
+        let pattern = format!("{}/%", prefix_root);
         let any: i64 = self
             .conn
             .query_row(
                 "SELECT EXISTS (SELECT 1 FROM files WHERE path LIKE ?1)",
-                params![prefix],
+                params![pattern],
                 |row| row.get(0),
             )
             .unwrap_or(0);
         if any == 0 {
             warn!(
-                "No coverage files match cwd '{}'. Re-run coverage from the same directory transmute runs from, or the lookup will always return empty.",
-                cwd()
+                "No coverage files match '{}'. Re-run coverage from the same directory transmute runs from, or the lookup will always return empty.",
+                prefix_root
             );
         }
     }
+}
+
+fn translate_path(absolute_runtime_path: &str, stored_cwd: &str) -> String {
+    let runtime_prefix = format!("{}/", runtime_cwd());
+    match absolute_runtime_path.strip_prefix(&runtime_prefix) {
+        Some(rest) => format!("{}/{}", stored_cwd, rest),
+        None => absolute_runtime_path.to_string(),
+    }
+}
+
+fn read_schema_meta(conn: &Connection, key: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT value FROM schema_meta WHERE key = ?1",
+        params![key],
+        |row| row.get(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
 }
 
 fn looks_like_json_coverage(file_path: &str) -> bool {
@@ -189,19 +236,7 @@ fn looks_like_json_coverage(file_path: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn canonical_key(file: &str) -> String {
-    let normalized: std::path::PathBuf = Path::new(file)
-        .components()
-        .filter(|c| !matches!(c, std::path::Component::CurDir))
-        .collect();
-    if normalized.is_absolute() {
-        normalized.display().to_string()
-    } else {
-        format!("{}/{}", cwd(), normalized.display())
-    }
-}
-
-fn cwd() -> &'static str {
+fn runtime_cwd() -> &'static str {
     CWD.get_or_init(|| {
         std::env::current_dir()
             .ok()

@@ -52,8 +52,10 @@ transmute \
 | `--command` | Shell command that runs a single test file. `{file}` is replaced with each affected test path. |
 | `--coverage` | Path to the coverage database. Defaults to `transmute.sqlite`. |
 | `--max-specs-per-mutation` | Cap how many specs run per mutation. `0` = unlimited (default; matches pre-0.2 semantics). |
+| `--jobs` | Number of parallel workers. `1` = serial (default). N>1 partitions files across N git worktrees and runs them concurrently. |
+| `--setup-command` | Shell command to run inside each worktree before its mutations start (e.g. `"bundle install"`). Only used with `--jobs > 1`. |
 | `--formatter` | `json` or `html`. Defaults to `json`. |
-| `--fail-fast` | Exit on the first surviving mutation. |
+| `--fail-fast` | Exit on the first surviving mutation. Ignored under `--jobs > 1`. |
 | `--log-level` | `trace`, `debug`, `info`, `warn`, `error`. Defaults to `info`. |
 
 Transmute exits non-zero if any mutation survives. Wire it into CI and the build fails the moment your suite stops catching real changes.
@@ -72,18 +74,46 @@ Per-mutation JSON includes `specs_total` (how many specs cover the line in the d
 
 To confirm a low-confidence survivor, re-run the engine targeted at that line with no cap: `--files app/models/user.rb:42 --max-specs-per-mutation 0`.
 
-### Parallel test runners
+### Parallel mutation runs
 
-Transmute writes one coverage file per test process. The engine reads one coverage file per run.
+`--jobs N` (with N>1) partitions the input file glob across N git worktrees and runs them concurrently. Each worker mutates and tests in its own isolated source tree, so concurrent mutations never step on each other.
+
+```sh
+transmute \
+  --files "app/**/*.rb" \
+  --coverage transmute.sqlite \
+  --command "bin/rspec {file}" \
+  --jobs 4 \
+  --setup-command "bundle install --quiet"
+```
+
+Preconditions and behavior:
+
+- **Clean working tree required.** Worktrees are created from `HEAD`; uncommitted work would not be tested. The engine refuses with a clear error if `git status --porcelain` is non-empty.
+- **Coverage must include capture-time cwd.** The engine translates source paths from runtime cwd (the worktree) back to the cwd recorded by the coverage gem. Requires `transmute-ruby 0.3+`. Older coverage DBs fail with a clear migration message.
+- **`--setup-command` runs once per worktree** before mutations begin (e.g. `bundle install`, `npm ci`). Required if your test runner needs per-tree dependencies; skip it if your runtime can share dependencies across trees.
+- **Disk and RAM scale with `--jobs`.** N workers ≈ N× source tree on disk and N× test-runner memory. Default `--jobs 1`; tune up cautiously.
+- **`--fail-fast` is ignored under `--jobs > 1`.** Workers can't cheaply signal each other yet; planned for a later release.
+- **Worktrees live in `$TMPDIR/transmute-worker-<pid>-w<n>/`** and are removed on success. A failed setup leaves the worktree on disk for inspection.
+
+### Parallel test runners (coverage capture)
+
+The coverage gem writes one SQLite file per test process. The engine reads one file per run.
 
 - Single-process suites (default `rspec`): the gem writes `transmute.sqlite` atomically (tmpfile + rename), so an interrupted run never leaves a half-written DB.
-- Parallel runners (`parallel_tests`, `knapsack_pro`): each worker that sets `TEST_ENV_NUMBER` writes to `transmute.${TEST_ENV_NUMBER}.sqlite`. The engine does not yet read across multiple files; until then, capture coverage with a non-parallelized run, or merge per-worker files manually before invoking the engine. Multi-file ingest is planned for 0.3.
+- Parallel runners (`parallel_tests`, `knapsack_pro`): each worker that sets `TEST_ENV_NUMBER` writes to `transmute.${TEST_ENV_NUMBER}.sqlite`. The engine does not yet read across multiple files; until then, capture coverage with a non-parallelized run, or merge per-worker files manually before invoking the engine. Multi-file ingest is planned for a later release.
 
-## Migrating from 0.1.x
+## Migrating
 
-Transmute 0.2 dropped the JSON coverage format. To upgrade:
+### From 0.2 to 0.3
 
-1. Update the `transmute-ruby` gem to `0.2.0` (or higher) — it now writes `transmute.sqlite` and depends on the `sqlite3` Ruby gem (`libsqlite3-dev` headers must be available on your build hosts).
+Coverage format is unchanged; existing `transmute.sqlite` files keep working for serial runs. To use `--jobs > 1`, upgrade `transmute-ruby` to `0.3.0+` and regenerate `transmute.sqlite` — the new gem version writes the capture-time cwd into `schema_meta`, which the engine needs to translate paths inside worktrees. Older coverage DBs raise a clear error when used with `--jobs > 1`.
+
+### From 0.1 to 0.2
+
+Transmute 0.2 dropped the JSON coverage format.
+
+1. Update the `transmute-ruby` gem to `0.2.0` or higher — it writes `transmute.sqlite` and depends on the `sqlite3` Ruby gem (`libsqlite3-dev` headers must be available on your build hosts).
 2. Re-run your test suite with `COVERAGE=true` to produce a fresh `transmute.sqlite`.
 3. Update any pipeline that referenced `transmute.json` to point at `transmute.sqlite`.
 

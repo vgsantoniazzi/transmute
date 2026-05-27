@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use crate::file::MutableItem;
 use crate::runner;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MutationResult {
     pub file_path: String,
     pub item: MutableItem,

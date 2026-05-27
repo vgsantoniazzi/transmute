@@ -1,6 +1,6 @@
 use glob::glob;
 use log::{info, trace, warn};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -50,7 +50,7 @@ pub fn restore_active_mutations() {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MutableItem {
     pub line_number: u32,
     pub start: usize,

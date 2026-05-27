@@ -4,6 +4,8 @@ use std::process::exit;
 use std::time::Duration;
 
 use transmute::file::ruby as ruby_mod;
+use transmute::parallel::{self, ParallelInput};
+use transmute::worktree;
 use transmute::{analytics, coverage, file, formatter, runner};
 
 /// transmute: Automatically change your code and make the tests fail. If don't, we will raise it for you.
@@ -25,6 +27,14 @@ struct Args {
     /// Cap how many specs run per mutation. 0 = unlimited (default; matches pre-0.2 semantics). For each (file, line), specs are ranked by how many lines of that file they cover (more = closer), and the top N run. Survivors produced under a cap are tagged low_confidence_failures.
     #[clap(long, default_value = "0")]
     max_specs_per_mutation: usize,
+
+    /// Number of parallel workers. 1 = serial (default). N > 1 partitions files across N git worktrees and runs them concurrently. Requires a clean working tree and coverage produced by transmute-ruby 0.3+.
+    #[clap(long, default_value = "1")]
+    jobs: usize,
+
+    /// Shell command to run inside each worktree before its mutations start (e.g. "bundle install"). Only used with --jobs > 1.
+    #[clap(long, default_value = "")]
+    setup_command: String,
 
     /// fail fast
     #[clap(long)]
@@ -54,22 +64,17 @@ struct Args {
 fn main() {
     let args = Args::parse();
     env_logger::init_from_env(
-        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, args.log_level),
+        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, &args.log_level),
     );
 
     ctrlc::set_handler(|| {
         runner::kill_active_child();
+        parallel::kill_active_workers();
         file::restore_active_mutations();
+        worktree::cleanup_active_worktrees();
         exit(130);
     })
     .expect("Error setting Ctrl-C handler");
-
-    info!(
-        "Starting transmute (max-specs-per-mutation={}).",
-        args.max_specs_per_mutation
-    );
-
-    ruby_mod::init_rng(args.seed);
 
     if !["json", "html"].contains(&args.formatter.as_str()) {
         eprintln!(
@@ -78,6 +83,63 @@ fn main() {
         );
         exit(2);
     }
+
+    if args.jobs > 1 {
+        info!(
+            "Starting transmute (jobs={}, max-specs-per-mutation={}).",
+            args.jobs, args.max_specs_per_mutation
+        );
+        run_parallel(&args);
+    } else {
+        info!(
+            "Starting transmute (max-specs-per-mutation={}).",
+            args.max_specs_per_mutation
+        );
+        run_serial(&args);
+    }
+}
+
+fn run_parallel(args: &Args) -> ! {
+    if args.fail_fast {
+        warn!(
+            "--fail-fast is ignored when --jobs > 1; workers can't cheaply signal each other yet"
+        );
+    }
+    let setup = if args.setup_command.is_empty() {
+        None
+    } else {
+        Some(args.setup_command.as_str())
+    };
+    let input = ParallelInput {
+        files: &args.files,
+        coverage: &args.coverage,
+        command: &args.command,
+        log_level: &args.log_level,
+        timeout: args.timeout,
+        seed: args.seed,
+        max_specs_per_mutation: args.max_specs_per_mutation,
+        jobs: args.jobs,
+        setup_command: setup,
+    };
+
+    match parallel::run(&input) {
+        Ok(result) => {
+            let failures = result.analytics.failures();
+            formatter::generate(result.analytics, &args.formatter, &args.output);
+            if result.any_worker_failed_to_produce_output {
+                exit(2);
+            }
+            exit(if failures > 0 { 1 } else { 0 });
+        }
+        Err(e) => {
+            eprintln!("transmute: {}", e);
+            exit(2);
+        }
+    }
+}
+
+fn run_serial(args: &Args) -> ! {
+    ruby_mod::init_rng(args.seed);
 
     let coverage = match coverage::Coverage::load(&args.coverage) {
         Ok(c) => c,
