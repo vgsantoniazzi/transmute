@@ -55,6 +55,28 @@ fn test_find_skips_non_string_entries_without_panic() {
 }
 
 #[test]
+fn test_find_returns_specs_when_file_path_is_absolute() {
+    let cwd = std::env::current_dir().unwrap().display().to_string();
+    let abs_file = format!("{}/tests/fixtures/app/user.rb", cwd);
+    let mut path = std::env::temp_dir();
+    path.push(format!(
+        "transmute_test_{}_abs.json",
+        std::process::id()
+    ));
+    let content = format!(r#"{{"{}:3": ["./spec/user_spec.rb"]}}"#, abs_file);
+    fs::write(&path, content).unwrap();
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    assert_eq!(
+        cov.find(&abs_file, 3),
+        ["./spec/user_spec.rb"],
+        "Absolute file path must look up the same key the gem wrote"
+    );
+
+    fs::remove_file(&path).ok();
+}
+
+#[test]
 fn test_find_returns_specs_for_known_line() {
     let fixture = write_fixture("test_find");
     let cov = coverage::Coverage::load(fixture.to_str().unwrap()).unwrap();

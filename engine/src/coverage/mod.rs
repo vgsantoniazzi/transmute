@@ -1,6 +1,7 @@
 use log::{info, trace, warn};
 use serde_json::Value;
 use std::fs;
+use std::path::Path;
 
 pub struct Coverage {
     pub data: Value,
@@ -19,7 +20,11 @@ impl Coverage {
     }
 
     pub fn find(&self, file: &str, line: u32) -> Vec<String> {
-        let accessor = format!("{}/{}:{}", cwd(), file, line);
+        let accessor = if Path::new(file).is_absolute() {
+            format!("{}:{}", file, line)
+        } else {
+            format!("{}/{}:{}", cwd(), file, line)
+        };
         trace!("loading specs for {}", accessor);
 
         let empty: Vec<Value> = Vec::new();
