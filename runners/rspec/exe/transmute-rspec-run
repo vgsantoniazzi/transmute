@@ -1,0 +1,22 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'transmute/rspec'
+
+socket_path = ENV['TRANSMUTE_RSPEC_SOCKET'] || Transmute::Rspec::Server::DEFAULT_SOCKET
+spec_path = ARGV[0]
+
+if spec_path.nil? || spec_path.empty?
+  warn 'Usage: transmute-rspec-run <spec_file>'
+  exit 2
+end
+
+begin
+  response = Transmute::Rspec::Client.new(socket_path: socket_path).run(spec_path)
+rescue Errno::ENOENT, Errno::ECONNREFUSED
+  warn "transmute-rspec-run: daemon not listening on #{socket_path}; start it with 'bundle exec transmute-rspec serve'"
+  exit 2
+end
+
+$stdout.write(response['stdout'].to_s)
+exit Integer(response['exit_code'] || 2)

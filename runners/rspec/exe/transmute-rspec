@@ -1,0 +1,30 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'optparse'
+require 'transmute/rspec'
+
+opts = { socket: Transmute::Rspec::Server::DEFAULT_SOCKET, require: [] }
+
+parser = OptionParser.new do |o|
+  o.banner = 'Usage: transmute-rspec serve [options]'
+  o.on('--listen PATH', "Unix socket path (default: #{opts[:socket]})") { |v| opts[:socket] = v }
+  o.on('--require PATH', 'Require a file at boot (repeat for multiple)') { |v| opts[:require] << v }
+  o.on('-h', '--help', 'Show this help') do
+    puts o
+    exit
+  end
+end
+
+cmd = ARGV.shift
+parser.parse!(ARGV)
+
+case cmd
+when 'serve', nil
+  opts[:require].each { |path| require path }
+  Transmute::Rspec::Server.new(socket_path: opts[:socket]).serve
+else
+  warn "transmute-rspec: unknown command '#{cmd}'"
+  warn parser.help
+  exit 2
+end
