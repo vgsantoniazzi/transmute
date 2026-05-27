@@ -54,9 +54,18 @@ fn main() {
 
     for file in files.iter() {
         'mutate: for mutable in file.mutable_items.iter() {
+            let specs = coverage.find(&file.path, mutable.line_number);
+            if specs.is_empty() {
+                warn!(
+                    "No specs cover {}:{}; skipping mutation.",
+                    file.path, mutable.line_number
+                );
+                continue 'mutate;
+            }
+
             let _guard = file::MutationGuard::apply(&file.path, mutable);
 
-            for spec_file in coverage.find(&file.path, mutable.line_number).iter() {
+            for spec_file in specs.iter() {
                 let (exit_code, stdout) = runner::run(&args.command, spec_file);
 
                 trace!("{}", stdout);

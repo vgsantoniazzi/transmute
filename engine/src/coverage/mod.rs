@@ -9,35 +9,48 @@ pub struct Coverage {
 impl Coverage {
     pub fn load(file_path: &str) -> Coverage {
         info!("Loading coverage {}..", file_path);
-        let file =
-            fs::read_to_string(file_path).expect(&format!("Unable to read file: {}", file_path));
-        return Coverage {
+        let file = fs::read_to_string(file_path)
+            .unwrap_or_else(|_| panic!("Unable to read file: {}", file_path));
+        let cov = Coverage {
             data: serde_json::from_str(&file).expect("Unable to parse"),
         };
+        cov.warn_if_no_coverage_keys_match_cwd();
+        cov
     }
 
     pub fn find(&self, file: &str, line: u16) -> Vec<String> {
-        let current_dir = std::env::current_dir()
-            .unwrap()
-            .into_os_string()
-            .into_string()
-            .unwrap();
-        let accessor = format!("{}/{}:{}", current_dir, file, line);
-        trace!("loading specs specs for {}", accessor);
+        let accessor = format!("{}/{}:{}", cwd(), file, line);
+        trace!("loading specs for {}", accessor);
 
-        let mut result = Vec::new();
-        for item in self.data[accessor.clone()]
+        let empty: Vec<Value> = Vec::new();
+        self.data[&accessor]
             .as_array()
-            .unwrap_or(&Vec::new())
+            .unwrap_or(&empty)
             .iter()
-        {
-            result.push(item.as_str().unwrap().to_string());
-        }
-
-        if result.is_empty() {
-            warn!("not found specs for {}", accessor)
-        };
-
-        return result;
+            .map(|item| item.as_str().unwrap().to_string())
+            .collect()
     }
+
+    fn warn_if_no_coverage_keys_match_cwd(&self) {
+        let prefix = format!("{}/", cwd());
+        let any_match = self
+            .data
+            .as_object()
+            .map(|o| o.keys().any(|k| k.starts_with(&prefix)))
+            .unwrap_or(false);
+        if !any_match {
+            warn!(
+                "No coverage keys match cwd '{}'. Re-run coverage from the same directory transmute runs from, or the lookup will always return empty.",
+                cwd()
+            );
+        }
+    }
+}
+
+fn cwd() -> String {
+    std::env::current_dir()
+        .unwrap()
+        .into_os_string()
+        .into_string()
+        .unwrap()
 }
