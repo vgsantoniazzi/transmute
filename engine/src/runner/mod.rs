@@ -1,26 +1,47 @@
 use log::trace;
-use std::process::Command;
+use std::io::Read;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
-pub fn run(command: &str, spec_file: &str) -> (i32, String) {
+pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
     let built_command = str::replace(command, "{file}", spec_file);
-
-    let chunks: Vec<&str> = built_command.split_whitespace().collect();
-
     trace!("Running specs: '{}'", built_command);
 
-    let output = Command::new(&chunks[0])
-        .args(&chunks[1..chunks.len()])
-        .output()
-        .expect("failed run specs");
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg(&built_command)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn shell");
 
-    let stdout = String::from_utf8(output.stdout)
-        .unwrap()
+    let start = Instant::now();
+    let exit_code = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status.code().unwrap_or(0),
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return (
+                        124,
+                        format!("transmute: timed out after {:?}\n", timeout),
+                    );
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => panic!("wait failed: {}", e),
+        }
+    };
+
+    let mut buf = String::new();
+    if let Some(mut out) = child.stdout.take() {
+        let _ = out.read_to_string(&mut buf);
+    }
+    let stdout: String = buf
         .lines()
         .map(|line| format!("{}\n", line))
         .collect::<String>();
 
-    match output.status.code() {
-        Some(code) => return (code, stdout),
-        None => return (0, stdout),
-    }
+    (exit_code, stdout)
 }

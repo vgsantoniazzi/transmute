@@ -1,6 +1,7 @@
 use clap::Parser;
 use log::{info, trace, warn};
 use std::process::exit;
+use std::time::Duration;
 
 mod analytics;
 mod coverage;
@@ -35,6 +36,10 @@ struct Args {
     /// formatter
     #[clap(long, default_value = "json")]
     formatter: String,
+
+    /// per-spec timeout in seconds
+    #[clap(long, default_value = "600")]
+    timeout: u64,
 }
 
 fn main() {
@@ -66,7 +71,8 @@ fn main() {
             let _guard = file::MutationGuard::apply(&file.path, mutable);
 
             for spec_file in specs.iter() {
-                let (exit_code, stdout) = runner::run(&args.command, spec_file);
+                let (exit_code, stdout) =
+                    runner::run(&args.command, spec_file, Duration::from_secs(args.timeout));
 
                 trace!("{}", stdout);
                 analytics.add(&file.path, mutable, exit_code, stdout);
