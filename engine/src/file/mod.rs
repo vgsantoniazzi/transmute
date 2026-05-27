@@ -70,9 +70,11 @@ impl File {
     }
 
     pub fn find_mutations(file_path: String, line_number: u32) -> Vec<MutableItem> {
-        let signature: Vec<&str> = file_path.split(".").collect();
-        match signature[signature.len() - 1] {
-            "rb" => ruby::find_all(&file_path, line_number),
+        match Path::new(&file_path)
+            .extension()
+            .and_then(|s| s.to_str())
+        {
+            Some("rb") => ruby::find_all(&file_path, line_number),
             _ => {
                 warn!("File '{}' is not supported. Skipping.", file_path);
                 Vec::new()

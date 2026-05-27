@@ -2,6 +2,9 @@ use log::{info, trace, warn};
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
+use std::sync::OnceLock;
+
+static CWD: OnceLock<String> = OnceLock::new();
 
 pub struct Coverage {
     pub data: Value,
@@ -52,10 +55,11 @@ impl Coverage {
     }
 }
 
-fn cwd() -> String {
-    std::env::current_dir()
-        .unwrap()
-        .into_os_string()
-        .into_string()
-        .unwrap()
+fn cwd() -> &'static str {
+    CWD.get_or_init(|| {
+        std::env::current_dir()
+            .ok()
+            .and_then(|p| p.into_os_string().into_string().ok())
+            .unwrap_or_default()
+    })
 }
