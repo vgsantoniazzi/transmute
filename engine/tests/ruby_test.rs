@@ -206,6 +206,38 @@ fn test_module_path_double_colon_is_not_a_symbol() {
 }
 
 #[test]
+fn test_numbers_skips_floats_and_hex_literals() {
+    let (path, items) = mutations_for("x = 1.5; y = 0xFF; z = 0b101", "float_hex");
+    let numbers: Vec<_> = items
+        .iter()
+        .filter(|m| m.content.chars().all(|c| c.is_ascii_digit()))
+        .collect();
+    assert!(
+        numbers.is_empty(),
+        "Digits inside floats/hex/binary literals must not become number mutations; got: {:?}",
+        numbers
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_overlapping_mutations_inside_string_literal_are_deduped() {
+    let (path, items) = mutations_for(r#"puts "123""#, "digits_inside_string");
+    let mut ranges: Vec<(usize, usize, &String)> =
+        items.iter().map(|m| (m.start, m.end, &m.content)).collect();
+    ranges.sort_by_key(|(s, _, _)| *s);
+    for w in ranges.windows(2) {
+        assert!(
+            w[0].1 <= w[1].0,
+            "Overlapping mutation ranges {:?} and {:?}",
+            w[0],
+            w[1]
+        );
+    }
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
 fn test_ge_and_le_operators_are_matched_as_pairs() {
     let (path, items) = mutations_for("a >= b && c <= d", "ge_le");
     let contents: Vec<&String> = items.iter().map(|m| &m.content).collect();

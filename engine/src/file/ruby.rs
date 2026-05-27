@@ -74,15 +74,30 @@ fn find_mutable_items(string: &str) -> Vec<(String, String, usize, usize)> {
         items.push((matched, replace, start, end));
     }
 
-    items
+    dedupe_overlapping(items)
+}
+
+fn dedupe_overlapping(
+    mut items: Vec<(String, String, usize, usize)>,
+) -> Vec<(String, String, usize, usize)> {
+    items.sort_by(|a, b| a.2.cmp(&b.2).then(b.3.cmp(&a.3)));
+    let mut out: Vec<(String, String, usize, usize)> = Vec::with_capacity(items.len());
+    let mut last_end = 0usize;
+    for item in items {
+        if item.2 >= last_end {
+            last_end = item.3;
+            out.push(item);
+        }
+    }
+    out
 }
 
 fn random_other_operator(current: &str, charset: &[&str]) -> String {
     let candidates: Vec<&&str> = charset.iter().filter(|&&x| x != current).collect();
-    candidates
-        .choose(&mut rand::thread_rng())
-        .unwrap()
-        .to_string()
+    match candidates.choose(&mut rand::thread_rng()) {
+        Some(s) => s.to_string(),
+        None => current.to_string(),
+    }
 }
 
 // Detects double- and single-quoted Ruby string literals only.
@@ -137,11 +152,12 @@ fn find_numbers(string: &str) -> Vec<(String, usize)> {
     regex
         .find_iter(string)
         .filter(|m| {
-            if m.start() == 0 {
-                return true;
-            }
-            let prev = bytes[m.start() - 1];
-            !(prev == b'_' || prev.is_ascii_alphabetic())
+            let prev = if m.start() > 0 { bytes[m.start() - 1] } else { 0 };
+            let next = bytes.get(m.end()).copied().unwrap_or(0);
+            let prev_word = prev == b'_' || prev.is_ascii_alphabetic();
+            let touches_dot = prev == b'.' || next == b'.';
+            let base_prefix = matches!(next, b'x' | b'X' | b'b' | b'B' | b'o' | b'O');
+            !(prev_word || touches_dot || base_prefix)
         })
         .map(|m| {
             trace!("Number {} found", m.as_str());
