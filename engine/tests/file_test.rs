@@ -15,6 +15,28 @@ fn scratch_path(name: &str) -> PathBuf {
 }
 
 #[test]
+fn test_extract_line_number_handles_non_numeric_tail() {
+    assert_eq!(file::File::extract_line_number("app/foo.rb"), 0);
+    assert_eq!(file::File::extract_line_number("app/foo.rb:42"), 42);
+    assert_eq!(file::File::extract_line_number("C:\\src\\foo.rb"), 0);
+    assert_eq!(file::File::extract_line_number("app/foo.rb:not_a_number"), 0);
+}
+
+#[test]
+fn test_extract_glob_pattern_preserves_colons_in_path() {
+    assert_eq!(file::File::extract_glob_pattern("app/foo.rb"), "app/foo.rb");
+    assert_eq!(file::File::extract_glob_pattern("app/foo.rb:42"), "app/foo.rb");
+    assert_eq!(
+        file::File::extract_glob_pattern("C:\\src\\foo.rb"),
+        "C:\\src\\foo.rb"
+    );
+    assert_eq!(
+        file::File::extract_glob_pattern("C:\\src\\foo.rb:42"),
+        "C:\\src\\foo.rb"
+    );
+}
+
+#[test]
 fn test_load_all_rb_files() {
     let mut files: Vec<String> = file::File::load("**/*.rb")
         .into_iter()

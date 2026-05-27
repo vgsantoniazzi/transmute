@@ -44,19 +44,16 @@ impl File {
     }
 
     pub fn extract_glob_pattern(path: &str) -> &str {
-        let splitted: Vec<&str> = path.split(":").collect();
-        return splitted.first().unwrap();
+        match path.rsplit_once(':') {
+            Some((prefix, tail)) if tail.parse::<u16>().is_ok() => prefix,
+            _ => path,
+        }
     }
 
     pub fn extract_line_number(path: &str) -> u16 {
-        let splitted: Vec<&str> = path.split(":").collect();
-
-        if splitted.len() == 1 {
-            return 0;
-        } else {
-            let line_number = splitted.last().unwrap().parse::<u16>().unwrap();
-            return line_number;
-        }
+        path.rsplit_once(':')
+            .and_then(|(_, tail)| tail.parse::<u16>().ok())
+            .unwrap_or(0)
     }
 
     pub fn find_mutations(file_path: String, line_number: u16) -> Vec<MutableItem> {
