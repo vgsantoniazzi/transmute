@@ -78,9 +78,15 @@ pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
     };
 
     let stdout_buf = stdout_reader.join().unwrap_or_default();
-    let _ = stderr_reader.join();
+    let stderr_buf = stderr_reader.join().unwrap_or_default();
 
-    let stdout = stdout_buf
+    let combined = if stderr_buf.trim().is_empty() {
+        stdout_buf
+    } else {
+        format!("{}\n--- stderr ---\n{}", stdout_buf, stderr_buf)
+    };
+
+    let stdout = combined
         .lines()
         .map(|line| format!("{}\n", line))
         .collect::<String>();

@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
-mod ruby;
+pub mod ruby;
 
 type ActiveMutations = Vec<(String, Vec<u8>)>;
 static ACTIVE_MUTATIONS: OnceLock<Mutex<ActiveMutations>> = OnceLock::new();

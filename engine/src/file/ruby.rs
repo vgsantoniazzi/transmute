@@ -1,11 +1,37 @@
 use log::trace;
-use rand::seq::SliceRandom;
-use random_string::generate;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use regex::Regex;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use crate::file::read_lines;
 use crate::file::MutableItem;
+
+static RNG: OnceLock<Mutex<StdRng>> = OnceLock::new();
+
+pub fn init_rng(seed: Option<u64>) {
+    let rng_value = seed
+        .map(StdRng::seed_from_u64)
+        .unwrap_or_else(StdRng::from_entropy);
+    let _ = RNG.set(Mutex::new(rng_value));
+}
+
+fn with_rng<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut StdRng) -> R,
+{
+    let cell = RNG.get_or_init(|| Mutex::new(StdRng::from_entropy()));
+    let mut guard = match cell.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    f(&mut guard)
+}
+
+fn generate(n: usize, charset: &str) -> String {
+    let chars: Vec<char> = charset.chars().collect();
+    with_rng(|r| (0..n).map(|_| chars[r.gen_range(0..chars.len())]).collect())
+}
 
 fn re_double() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
@@ -152,10 +178,13 @@ fn comment_start(string: &str) -> usize {
 
 fn random_other_operator(current: &str, charset: &[&str]) -> String {
     let candidates: Vec<&&str> = charset.iter().filter(|&&x| x != current).collect();
-    match candidates.choose(&mut rand::thread_rng()) {
-        Some(s) => s.to_string(),
-        None => current.to_string(),
+    if candidates.is_empty() {
+        return current.to_string();
     }
+    with_rng(|r| {
+        let idx = r.gen_range(0..candidates.len());
+        candidates[idx].to_string()
+    })
 }
 
 // Detects double- and single-quoted Ruby string literals only.
