@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS coverage (
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS idx_coverage_spec ON coverage(spec_id);
+CREATE INDEX IF NOT EXISTS idx_coverage_file_spec ON coverage(file_id, spec_id);
 "#;
 
 pub fn initialize(conn: &Connection) -> rusqlite::Result<()> {

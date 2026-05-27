@@ -374,6 +374,73 @@ fn test_seed_produces_deterministic_mutation_replacements() -> Result<(), Box<dy
 }
 
 #[test]
+fn test_max_specs_per_mutation_limits_runner_invocations() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = scratch_dir("max_specs");
+    let rb_path = dir.join("scratch.rb");
+    std::fs::write(&rb_path, "puts 42\n").unwrap();
+
+    let cov_path = dir.join("cov.sqlite");
+    let key = if rb_path.is_absolute() {
+        rb_path.display().to_string()
+    } else {
+        let cwd = std::env::current_dir().unwrap();
+        format!("{}/{}", cwd.display(), rb_path.display())
+    };
+    common::write_fixture(
+        &cov_path,
+        &[(
+            key.as_str(),
+            1,
+            &["s1.rb", "s2.rb", "s3.rb", "s4.rb", "s5.rb"],
+        )],
+    );
+    let run_log = dir.join("runs.log");
+    let output_path = dir.join("result.json");
+
+    let cmd_str = format!("sh -c 'echo {{file}} >> {}'", run_log.display());
+
+    Command::cargo_bin("transmute")?
+        .arg("--coverage")
+        .arg(&cov_path)
+        .arg("--files")
+        .arg(&rb_path)
+        .arg("--command")
+        .arg(&cmd_str)
+        .arg("--max-specs-per-mutation")
+        .arg("2")
+        .arg("--output")
+        .arg(&output_path)
+        .arg("--log-level")
+        .arg("warn")
+        .output()?;
+
+    let log = std::fs::read_to_string(&run_log).unwrap_or_default();
+    let run_count = log.lines().count();
+    assert_eq!(
+        run_count, 2,
+        "--max-specs-per-mutation 2 must run exactly 2 specs (got log: {:?})",
+        log
+    );
+
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&output_path).unwrap()).unwrap();
+    assert_eq!(report["failures"], 1, "Survivor must be reported");
+    assert_eq!(
+        report["low_confidence_failures"], 1,
+        "Filtered run must roll up as low-confidence"
+    );
+    assert_eq!(report["uncovered_failures"], 0);
+    assert_eq!(
+        report["analytics"]["mutations"][0]["specs_total"], 5,
+        "Per-mutation specs_total must report the unfiltered total"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+    Ok(())
+}
+
+#[test]
 fn test_warns_when_no_coverage_files_match_cwd() -> Result<(), Box<dyn std::error::Error>> {
     let dir = scratch_dir("cwd_mismatch");
     let rb_path = dir.join("scratch.rb");

@@ -1,7 +1,6 @@
 mod common;
 
 use transmute::coverage;
-use transmute::coverage::CoverageMode;
 
 use std::path::PathBuf;
 
@@ -71,6 +70,22 @@ fn test_load_returns_err_with_migration_hint_when_content_starts_with_brace() {
 }
 
 #[test]
+fn test_load_accepts_sqlite_file_named_with_json_extension() {
+    let mut path = std::env::temp_dir();
+    path.push(format!(
+        "transmute_test_{}_renamed.json",
+        std::process::id()
+    ));
+    let abs = absolute("a/b.rb");
+    common::write_fixture(&path, &[(abs.as_str(), 1, &["spec.rb"])]);
+
+    coverage::Coverage::load(path.to_str().unwrap())
+        .expect("A valid SQLite file must load even if its filename ends in .json");
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
 fn test_load_returns_err_when_db_is_not_a_transmute_coverage_database() {
     let path = fixture_path("not_transmute");
     let conn = rusqlite::Connection::open(&path).unwrap();
@@ -122,12 +137,12 @@ fn test_find_normalizes_curdir_components_in_path() {
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
     assert_eq!(
-        cov.find("./a/b.rb", 1, CoverageMode::High).specs,
+        cov.find("./a/b.rb", 1, 0).specs,
         vec!["spec.rb".to_string()],
-        "Leading './' must be stripped before lookup so the relative path matches the canonical key"
+        "Leading './' must be stripped before lookup"
     );
     assert_eq!(
-        cov.find("a/./b.rb", 1, CoverageMode::High).specs,
+        cov.find("a/./b.rb", 1, 0).specs,
         vec!["spec.rb".to_string()],
         "Mid-path './' segment must be normalized away"
     );
@@ -143,7 +158,7 @@ fn test_find_returns_specs_when_file_path_is_absolute() {
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
     assert_eq!(
-        cov.find(&abs_file, 3, CoverageMode::High).specs,
+        cov.find(&abs_file, 3, 0).specs,
         ["./spec/user_spec.rb"],
         "Absolute file path must look up the same key the gem wrote"
     );
@@ -158,9 +173,9 @@ fn test_find_returns_specs_for_known_line() {
     common::write_fixture(&path, &[(abs.as_str(), 3, &["./spec/user_spec.rb"])]);
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    let m = cov.find("tests/fixtures/app/user.rb", 3, CoverageMode::High);
+    let m = cov.find("tests/fixtures/app/user.rb", 3, 0);
     assert_eq!(m.specs, ["./spec/user_spec.rb"]);
-    assert!(m.complete, "single covering spec returned in full");
+    assert_eq!(m.total, 1);
 
     std::fs::remove_file(&path).ok();
 }
@@ -172,159 +187,119 @@ fn test_find_returns_empty_when_key_missing() {
     common::write_fixture(&path, &[(abs.as_str(), 3, &["./spec/user_spec.rb"])]);
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    let m = cov.find("not-found.rs", 1, CoverageMode::High);
+    let m = cov.find("not-found.rs", 1, 0);
     let expected: Vec<String> = Vec::new();
     assert_eq!(m.specs, expected);
-    assert!(m.complete, "empty match is trivially complete");
+    assert_eq!(m.total, 0, "no covering specs => total is zero (uncovered)");
 
     std::fs::remove_file(&path).ok();
 }
 
 #[test]
-fn test_find_returns_multiple_specs_in_stable_order() {
-    let path = fixture_path("multi_specs");
+fn test_find_orders_specs_by_lines_of_target_file_descending() {
+    let path = fixture_path("local_ranking");
+    let abs = absolute("app/user.rb");
+    let other = absolute("app/other.rb");
+    common::write_fixture(
+        &path,
+        &[
+            (abs.as_str(), 1, &["narrow_spec.rb", "wide_spec.rb"]),
+            (abs.as_str(), 2, &["wide_spec.rb"]),
+            (abs.as_str(), 3, &["wide_spec.rb"]),
+            (other.as_str(), 1, &["narrow_spec.rb"]),
+            (other.as_str(), 2, &["narrow_spec.rb"]),
+            (other.as_str(), 3, &["narrow_spec.rb"]),
+            (other.as_str(), 4, &["narrow_spec.rb"]),
+        ],
+    );
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let m = cov.find("app/user.rb", 1, 0);
+    assert_eq!(
+        m.specs,
+        vec!["wide_spec.rb".to_string(), "narrow_spec.rb".to_string()],
+        "wide_spec covers 3 lines of user.rb; narrow_spec covers 1 line — wide_spec ranks higher"
+    );
+    assert_eq!(m.total, 2);
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_find_breaks_ties_alphabetically_by_spec_path() {
+    let path = fixture_path("tie_breaker");
     let abs = absolute("app/user.rb");
     common::write_fixture(
         &path,
-        &[(abs.as_str(), 5, &["a_spec.rb", "b_spec.rb", "c_spec.rb"])],
+        &[(abs.as_str(), 1, &["c_spec.rb", "a_spec.rb", "b_spec.rb"])],
     );
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    let m = cov.find("app/user.rb", 5, CoverageMode::High);
-    let mut specs = m.specs;
-    specs.sort();
-    assert_eq!(specs, vec!["a_spec.rb", "b_spec.rb", "c_spec.rb"]);
-
-    std::fs::remove_file(&path).ok();
-}
-
-fn write_layered_fixture(name: &str) -> PathBuf {
-    let path = fixture_path(name);
-    let abs = absolute("app/user.rb");
-    let mut entries: Vec<(String, u32, Vec<String>)> = Vec::new();
-    let target_specs: Vec<String> = (0..15).map(|i| format!("spec_{:02}.rb", i)).collect();
-    entries.push((abs.clone(), 1, target_specs.clone()));
-    for (i, spec) in target_specs.iter().enumerate() {
-        for f in 0..i {
-            entries.push((
-                absolute(&format!("app/other_{:02}_{}.rb", i, f)),
-                1,
-                vec![spec.clone()],
-            ));
-        }
-    }
-    let entry_refs: Vec<(&str, u32, Vec<&str>)> = entries
-        .iter()
-        .map(|(file, line, specs)| {
-            (
-                file.as_str(),
-                *line,
-                specs.iter().map(|s| s.as_str()).collect(),
-            )
-        })
-        .collect();
-    let entry_slices: Vec<(&str, u32, &[&str])> = entry_refs
-        .iter()
-        .map(|(file, line, specs)| (*file, *line, specs.as_slice()))
-        .collect();
-    common::write_fixture(&path, &entry_slices);
-    path
-}
-
-#[test]
-fn test_find_orders_specs_by_global_file_count_ascending() {
-    let path = write_layered_fixture("ordered");
-    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-
-    let m = cov.find("app/user.rb", 1, CoverageMode::High);
-    let expected: Vec<String> = (0..15).map(|i| format!("spec_{:02}.rb", i)).collect();
-    assert_eq!(
-        m.specs, expected,
-        "specs must be ordered by global file_count ascending (narrowest first)"
-    );
-    assert!(
-        m.complete,
-        "high mode returns everything; result is complete"
-    );
-
-    std::fs::remove_file(&path).ok();
-}
-
-#[test]
-fn test_find_low_mode_keeps_top_three_narrowest() {
-    let path = write_layered_fixture("low_mode");
-    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-
-    let m = cov.find("app/user.rb", 1, CoverageMode::Low);
+    let m = cov.find("app/user.rb", 1, 0);
     assert_eq!(
         m.specs,
         vec![
-            "spec_00.rb".to_string(),
-            "spec_01.rb".to_string(),
-            "spec_02.rb".to_string()
+            "a_spec.rb".to_string(),
+            "b_spec.rb".to_string(),
+            "c_spec.rb".to_string()
         ],
-        "low mode keeps only the 3 narrowest specs"
-    );
-    assert!(
-        !m.complete,
-        "low mode dropped specs; result must be flagged as incomplete"
+        "Equal line_count => sort alphabetically by path"
     );
 
     std::fs::remove_file(&path).ok();
 }
 
 #[test]
-fn test_find_medium_mode_keeps_top_ten_narrowest() {
-    let path = write_layered_fixture("medium_mode");
-    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-
-    let m = cov.find("app/user.rb", 1, CoverageMode::Medium);
-    let expected: Vec<String> = (0..10).map(|i| format!("spec_{:02}.rb", i)).collect();
-    assert_eq!(
-        m.specs, expected,
-        "medium mode keeps the 10 narrowest specs"
-    );
-    assert!(!m.complete, "medium mode dropped specs; flagged incomplete");
-
-    std::fs::remove_file(&path).ok();
-}
-
-#[test]
-fn test_find_complete_is_true_when_covering_set_smaller_than_limit() {
-    let path = fixture_path("small_covering");
+fn test_find_caps_specs_when_max_specs_is_nonzero() {
+    let path = fixture_path("cap_max_specs");
     let abs = absolute("app/user.rb");
-    common::write_fixture(&path, &[(abs.as_str(), 1, &["only_spec.rb"])]);
+    common::write_fixture(
+        &path,
+        &[(
+            abs.as_str(),
+            1,
+            &["s_01.rb", "s_02.rb", "s_03.rb", "s_04.rb", "s_05.rb"],
+        )],
+    );
 
     let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
-    let m = cov.find("app/user.rb", 1, CoverageMode::Low);
-    assert_eq!(m.specs, vec!["only_spec.rb".to_string()]);
-    assert!(
-        m.complete,
-        "covering set (1) <= limit (3); result must be complete"
-    );
+    let m = cov.find("app/user.rb", 1, 3);
+    assert_eq!(m.specs.len(), 3);
+    assert_eq!(m.total, 5, "total reflects covering set before truncation");
 
     std::fs::remove_file(&path).ok();
 }
 
 #[test]
-fn test_coverage_mode_parse_accepts_valid_strings() {
-    assert!(matches!(CoverageMode::parse("low"), Ok(CoverageMode::Low)));
-    assert!(matches!(
-        CoverageMode::parse("medium"),
-        Ok(CoverageMode::Medium)
-    ));
-    assert!(matches!(
-        CoverageMode::parse("high"),
-        Ok(CoverageMode::High)
-    ));
+fn test_find_does_not_truncate_when_max_specs_is_zero() {
+    let path = fixture_path("unlimited");
+    let abs = absolute("app/user.rb");
+    common::write_fixture(
+        &path,
+        &[(abs.as_str(), 1, &["s_01.rb", "s_02.rb", "s_03.rb"])],
+    );
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let m = cov.find("app/user.rb", 1, 0);
+    assert_eq!(m.specs.len(), 3);
+    assert_eq!(m.total, 3);
+
+    std::fs::remove_file(&path).ok();
 }
 
 #[test]
-fn test_coverage_mode_parse_rejects_unknown_string() {
-    let err = CoverageMode::parse("aggressive").unwrap_err();
-    assert!(
-        err.contains("aggressive") && err.contains("low") && err.contains("high"),
-        "Error must name the bad value and list valid options; got: {}",
-        err
+fn test_find_returns_full_set_when_covering_count_equals_max_specs() {
+    let path = fixture_path("boundary");
+    let abs = absolute("app/user.rb");
+    common::write_fixture(
+        &path,
+        &[(abs.as_str(), 1, &["s_01.rb", "s_02.rb", "s_03.rb"])],
     );
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    let m = cov.find("app/user.rb", 1, 3);
+    assert_eq!(m.specs.len(), 3, "n == limit => no truncation");
+    assert_eq!(m.total, 3);
+
+    std::fs::remove_file(&path).ok();
 }

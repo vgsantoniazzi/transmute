@@ -9,6 +9,7 @@ use crate::analytics::AnalyticsResult;
 #[derive(Serialize)]
 struct Report<'a> {
     failures: usize,
+    uncovered_failures: usize,
     low_confidence_failures: usize,
     analytics: &'a AnalyticsResult,
 }
@@ -43,6 +44,7 @@ fn generate_html(analytics: &AnalyticsResult, output_path: &str) {
     let mut context = Context::new();
     context.insert("analytics", analytics);
     context.insert("failures", &analytics.failures());
+    context.insert("uncovered_failures", &analytics.uncovered_failures());
     context.insert(
         "low_confidence_failures",
         &analytics.low_confidence_failures(),
@@ -56,6 +58,7 @@ fn generate_html(analytics: &AnalyticsResult, output_path: &str) {
 fn generate_json(analytics: &AnalyticsResult, output_path: &str) {
     let report = Report {
         failures: analytics.failures(),
+        uncovered_failures: analytics.uncovered_failures(),
         low_confidence_failures: analytics.low_confidence_failures(),
         analytics,
     };

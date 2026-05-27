@@ -34,6 +34,7 @@ class Transmute
     ) WITHOUT ROWID;
 
     CREATE INDEX IF NOT EXISTS idx_coverage_spec ON coverage(spec_id);
+    CREATE INDEX IF NOT EXISTS idx_coverage_file_spec ON coverage(file_id, spec_id);
   SQL
 
   @instance = new
@@ -84,9 +85,13 @@ class Transmute
   end
 
   def store!(path = DEFAULT_PATH)
-    File.delete(path) if File.exist?(path)
-    db = SQLite3::Database.new(path)
+    final_path = worker_scoped_path(path)
+    tmp_path = "#{final_path}.tmp.#{Process.pid}"
+    File.delete(tmp_path) if File.exist?(tmp_path)
+
+    db = SQLite3::Database.new(tmp_path)
     begin
+      db.execute('PRAGMA busy_timeout = 5000')
       db.execute_batch(SCHEMA_DDL)
       db.execute(
         "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', ?)",
@@ -96,9 +101,22 @@ class Transmute
     ensure
       db.close
     end
+
+    File.rename(tmp_path, final_path)
+    final_path
   end
 
   private
+
+  def worker_scoped_path(path)
+    env_number = ENV['TEST_ENV_NUMBER']
+    return path if env_number.nil? || env_number.empty?
+
+    suffix = ".#{env_number}.sqlite"
+    return path.sub(/\.sqlite\z/, suffix) if path.end_with?('.sqlite')
+
+    "#{path}#{suffix}"
+  end
 
   def write_entries(db)
     file_ids = {}

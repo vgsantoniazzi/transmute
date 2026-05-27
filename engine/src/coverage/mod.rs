@@ -1,50 +1,19 @@
 pub mod schema;
 
-use log::{info, trace, warn};
+use log::{error, info, trace, warn};
 use rusqlite::{params, Connection, OpenFlags};
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::OnceLock;
 
 static CWD: OnceLock<String> = OnceLock::new();
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum CoverageMode {
-    Low,
-    Medium,
-    High,
-}
-
-impl CoverageMode {
-    pub fn parse(value: &str) -> Result<CoverageMode, String> {
-        match value {
-            "low" => Ok(CoverageMode::Low),
-            "medium" => Ok(CoverageMode::Medium),
-            "high" => Ok(CoverageMode::High),
-            other => Err(format!(
-                "unknown --coverage-mode '{}'; valid: low, medium, high",
-                other
-            )),
-        }
-    }
-
-    fn limit(self) -> Option<usize> {
-        match self {
-            CoverageMode::Low => Some(3),
-            CoverageMode::Medium => Some(10),
-            CoverageMode::High => None,
-        }
-    }
-}
-
 pub struct CoverageMatch {
     pub specs: Vec<String>,
-    pub complete: bool,
+    pub total: usize,
 }
 
 pub struct Coverage {
     conn: Connection,
-    spec_frequency: HashMap<i64, u32>,
 }
 
 impl Coverage {
@@ -68,6 +37,9 @@ impl Coverage {
         let conn = Connection::open_with_flags(file_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|e| format!("unable to open coverage file '{}': {}", file_path, e))?;
 
+        conn.busy_timeout(std::time::Duration::from_millis(5000))
+            .map_err(|e| format!("coverage DB busy_timeout setup failed: {}", e))?;
+
         schema::verify(&conn).map_err(|e| {
             format!(
                 "coverage file '{}' is not a valid transmute database: {}",
@@ -75,90 +47,107 @@ impl Coverage {
             )
         })?;
 
-        let spec_frequency = compute_spec_frequency(&conn).map_err(|e| {
-            format!(
-                "coverage file '{}' could not be summarized for prioritization: {}",
-                file_path, e
-            )
-        })?;
-
-        let cov = Coverage {
-            conn,
-            spec_frequency,
-        };
+        let cov = Coverage { conn };
+        cov.warn_if_coverage_table_is_empty();
         cov.warn_if_no_coverage_files_match_cwd();
         Ok(cov)
     }
 
-    pub fn find(&self, file: &str, line: u32, mode: CoverageMode) -> CoverageMatch {
+    pub fn find(&self, file: &str, line: u32, max_specs: usize) -> CoverageMatch {
         let key = canonical_key(file);
-        trace!("loading specs for {}:{} (mode={:?})", key, line, mode);
+        trace!(
+            "loading specs for {}:{} (max_specs={})",
+            key,
+            line,
+            max_specs
+        );
 
-        let mut covering = match self.query_covering(&key, line) {
+        let mut covering = match self.query_covering_with_local_score(&key, line) {
             Ok(v) => v,
             Err(e) => {
-                warn!("coverage query failed for {}:{}: {}", key, line, e);
+                error!(
+                    "coverage query failed for {}:{}: {}; treating as uncovered",
+                    key, line, e
+                );
                 return CoverageMatch {
                     specs: Vec::new(),
-                    complete: true,
+                    total: 0,
                 };
             }
         };
 
-        covering.sort_by(|a, b| {
-            let fa = self.spec_frequency.get(&a.0).copied().unwrap_or(0);
-            let fb = self.spec_frequency.get(&b.0).copied().unwrap_or(0);
-            fa.cmp(&fb).then_with(|| a.1.cmp(&b.1))
-        });
+        covering.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.2.cmp(&b.2)));
 
         let total = covering.len();
-        let limit = mode.limit();
-        let complete = match limit {
-            None => true,
-            Some(n) => n >= total,
+        let limit = if max_specs == 0 {
+            usize::MAX
+        } else {
+            max_specs
         };
         let specs: Vec<String> = covering
             .into_iter()
-            .take(limit.unwrap_or(usize::MAX))
-            .map(|(_, path)| path)
+            .take(limit)
+            .map(|(_, _, p)| p)
             .collect();
 
-        if !complete {
+        if specs.len() < total {
             trace!(
-                "filtered {}:{} specs from {} to {} under {:?}",
+                "filtered {}:{} specs from {} to {} (max_specs={})",
                 key,
                 line,
                 total,
                 specs.len(),
-                mode
+                max_specs
             );
         }
 
-        CoverageMatch { specs, complete }
+        CoverageMatch { specs, total }
     }
 
-    fn query_covering(&self, key: &str, line: u32) -> rusqlite::Result<Vec<(i64, String)>> {
+    fn query_covering_with_local_score(
+        &self,
+        key: &str,
+        line: u32,
+    ) -> rusqlite::Result<Vec<(i64, i64, String)>> {
         let mut stmt = self.conn.prepare_cached(
-            "SELECT s.id, s.path
+            "SELECT s.id,
+                    (SELECT COUNT(*) FROM coverage c2
+                     WHERE c2.file_id = f.id AND c2.spec_id = s.id) AS lines_in_file,
+                    s.path
              FROM coverage c
              JOIN files f ON c.file_id = f.id
              JOIN specs s ON c.spec_id = s.id
              WHERE f.path = ?1 AND c.line = ?2",
         )?;
         let rows = stmt.query_map(params![key, line], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+            ))
         })?;
         rows.collect()
     }
 
+    fn warn_if_coverage_table_is_empty(&self) {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM coverage", [], |row| row.get(0))
+            .unwrap_or(0);
+        if count == 0 {
+            warn!(
+                "Coverage database has zero rows. Every mutation will be reported as surviving with no covering spec; the report will be uninformative. Re-generate coverage from your test suite."
+            );
+        }
+    }
+
     fn warn_if_no_coverage_files_match_cwd(&self) {
-        let prefix = format!("{}/", cwd());
-        let pattern = format!("{}%", prefix);
+        let prefix = format!("{}/%", cwd());
         let any: i64 = self
             .conn
             .query_row(
                 "SELECT EXISTS (SELECT 1 FROM files WHERE path LIKE ?1)",
-                params![pattern],
+                params![prefix],
                 |row| row.get(0),
             )
             .unwrap_or(0);
@@ -171,40 +160,33 @@ impl Coverage {
     }
 }
 
-fn compute_spec_frequency(conn: &Connection) -> rusqlite::Result<HashMap<i64, u32>> {
-    let mut stmt =
-        conn.prepare("SELECT spec_id, COUNT(DISTINCT file_id) FROM coverage GROUP BY spec_id")?;
-    let mut rows = stmt.query([])?;
-    let mut out = HashMap::new();
-    while let Some(row) = rows.next()? {
-        let spec_id: i64 = row.get(0)?;
-        let count: i64 = row.get(1)?;
-        out.insert(spec_id, count.max(0) as u32);
-    }
-    Ok(out)
-}
-
 fn looks_like_json_coverage(file_path: &str) -> bool {
-    let path = Path::new(file_path);
-    let extension_is_json = path
+    use std::io::Read;
+
+    let mut file = match std::fs::File::open(file_path) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+
+    let mut header = [0u8; 16];
+    let read = match file.read(&mut header) {
+        Ok(n) => n,
+        Err(_) => return false,
+    };
+
+    if read >= 16 && &header == b"SQLite format 3\0" {
+        return false;
+    }
+
+    if read >= 1 && matches!(header[0], b'{' | b'[') {
+        return true;
+    }
+
+    Path::new(file_path)
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.eq_ignore_ascii_case("json"))
-        .unwrap_or(false);
-    if extension_is_json {
-        return true;
-    }
-    match std::fs::File::open(file_path) {
-        Ok(mut f) => {
-            use std::io::Read;
-            let mut buf = [0u8; 1];
-            match f.read(&mut buf) {
-                Ok(1) => matches!(buf[0], b'{' | b'['),
-                _ => false,
-            }
-        }
-        Err(_) => false,
-    }
+        .unwrap_or(false)
 }
 
 fn canonical_key(file: &str) -> String {
