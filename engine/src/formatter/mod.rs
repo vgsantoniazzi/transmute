@@ -12,15 +12,15 @@ struct Report<'a> {
     analytics: &'a AnalyticsResult,
 }
 
-pub fn generate(mut analytics: AnalyticsResult, formatter: &str, output: &str) {
+pub fn generate(analytics: AnalyticsResult, formatter: &str, output: &str) {
     info!("generating {} output", formatter);
 
     match formatter {
-        "json" => generate_json(&mut analytics, resolved_output(output, "result.json")),
-        "html" => generate_html(&mut analytics, resolved_output(output, "index.html")),
+        "json" => generate_json(&analytics, resolved_output(output, "result.json")),
+        "html" => generate_html(&analytics, resolved_output(output, "index.html")),
         _ => {
             warn!("formatter not found, exporting as JSON");
-            generate_json(&mut analytics, resolved_output(output, "result.json"));
+            generate_json(&analytics, resolved_output(output, "result.json"));
         }
     }
 }
@@ -33,14 +33,14 @@ fn resolved_output<'a>(requested: &'a str, default: &'a str) -> &'a str {
     }
 }
 
-fn generate_html(analytics: &mut AnalyticsResult, output_path: &str) {
+fn generate_html(analytics: &AnalyticsResult, output_path: &str) {
     let template = include_str!("index.html");
     let mut tera = Tera::default();
     tera.add_raw_template("index.html", template)
         .expect("bundled HTML template must compile");
 
     let mut context = Context::new();
-    context.insert("analytics", &*analytics);
+    context.insert("analytics", analytics);
     context.insert("failures", &analytics.failures());
     let content = tera
         .render("index.html", &context)
@@ -48,7 +48,7 @@ fn generate_html(analytics: &mut AnalyticsResult, output_path: &str) {
     write_or_fallback(output_path, &content);
 }
 
-fn generate_json(analytics: &mut AnalyticsResult, output_path: &str) {
+fn generate_json(analytics: &AnalyticsResult, output_path: &str) {
     let report = Report {
         failures: analytics.failures(),
         analytics,

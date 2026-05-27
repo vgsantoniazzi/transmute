@@ -36,7 +36,7 @@ impl AnalyticsResult {
     }
 
     pub fn failures(&self) -> usize {
-        type MutationKey<'a> = (&'a str, u32, usize, usize, &'a str);
+        type MutationKey<'a> = (&'a str, u32, usize, usize);
         type RunOutcome = (bool, bool);
         let mut state: HashMap<MutationKey, RunOutcome> = HashMap::new();
         for m in self.mutations.iter() {
@@ -45,7 +45,6 @@ impl AnalyticsResult {
                 m.item.line_number,
                 m.item.start,
                 m.item.end,
-                m.item.replace.as_str(),
             );
             let entry = state.entry(key).or_insert((false, false));
             let real_kill = m.exit_code != 0 && !runner::is_infra_error(m.exit_code);

@@ -59,7 +59,7 @@ fn re_op_eq() -> &'static Regex {
 }
 fn re_class_inheritance() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
-    R.get_or_init(|| Regex::new(r"\bclass\s+\w+\s+$").unwrap())
+    R.get_or_init(|| Regex::new(r"\bclass\s+\w+\s+").unwrap())
 }
 
 static STRING_CHARSET: &str = "abcdefghijklmnopqrstuvwxyz_";
@@ -294,8 +294,8 @@ fn find_operators(string: &str) -> Vec<(String, usize)> {
 }
 
 fn find_less_than_operators(string: &str) -> Vec<(String, usize)> {
-    let class_inheritance = re_class_inheritance();
     let bytes = string.as_bytes();
+    let inheritance_pos: Option<usize> = re_class_inheritance().find(string).map(|m| m.end());
     let mut result = Vec::new();
     for (i, &b) in bytes.iter().enumerate() {
         if b != b'<' {
@@ -309,7 +309,7 @@ fn find_less_than_operators(string: &str) -> Vec<(String, usize)> {
         if next == b'=' {
             continue;
         }
-        if class_inheritance.is_match(&string[..i]) {
+        if inheritance_pos == Some(i) {
             continue;
         }
         trace!("Operator < found at {}", i);

@@ -1,11 +1,11 @@
 use transmute::analytics;
 use transmute::file;
 
-fn item(replace: &str) -> file::MutableItem {
+fn item(start: usize, replace: &str) -> file::MutableItem {
     file::MutableItem {
         line_number: 1,
-        start: 0,
-        end: 1,
+        start,
+        end: start + 1,
         implementation: "a".to_string(),
         content: "a".to_string(),
         replace: replace.to_string(),
@@ -51,8 +51,8 @@ fn test_failures_does_not_merge_distinct_mutations_with_colliding_replace() {
 #[test]
 fn test_failures_counts_groups_where_all_specs_passed() {
     let mut r = analytics::AnalyticsResult::start(1);
-    let survived = item("b");
-    let killed = item("c");
+    let survived = item(0, "b");
+    let killed = item(2, "c");
 
     r.add("file.rb", &survived, 0, "out".to_string());
     r.add("file.rb", &survived, 0, "out".to_string());

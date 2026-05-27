@@ -1,6 +1,7 @@
 use log::trace;
 use std::io::Read;
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -8,6 +9,26 @@ pub const INFRA_EXIT_CODES: &[i32] = &[2, 124, 125, 127];
 
 pub fn is_infra_error(exit_code: i32) -> bool {
     INFRA_EXIT_CODES.contains(&exit_code)
+}
+
+static ACTIVE_CHILD_PID: OnceLock<Mutex<Option<u32>>> = OnceLock::new();
+
+fn locked_active_child_pid() -> std::sync::MutexGuard<'static, Option<u32>> {
+    let cell = ACTIVE_CHILD_PID.get_or_init(|| Mutex::new(None));
+    match cell.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    }
+}
+
+pub fn kill_active_child() {
+    let pid = locked_active_child_pid().take();
+    if let Some(pid) = pid {
+        let _ = Command::new("kill")
+            .arg("-TERM")
+            .arg(pid.to_string())
+            .status();
+    }
 }
 
 pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
@@ -48,6 +69,8 @@ pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
         }
     };
 
+    *locked_active_child_pid() = Some(child.id());
+
     let stdout = child.stdout.take().expect("stdout was piped");
     let stderr = child.stderr.take().expect("stderr was piped");
     let stdout_reader = thread::spawn(move || drain(stdout));
@@ -61,6 +84,7 @@ pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
                 if start.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();
+                    *locked_active_child_pid() = None;
                     let _ = stdout_reader.join();
                     let _ = stderr_reader.join();
                     return (124, format!("transmute: timed out after {:?}\n", timeout));
@@ -70,12 +94,15 @@ pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
             Err(e) => {
                 let _ = child.kill();
                 let _ = child.wait();
+                *locked_active_child_pid() = None;
                 let _ = stdout_reader.join();
                 let _ = stderr_reader.join();
                 return (125, format!("transmute: wait failed: {}\n", e));
             }
         }
     };
+
+    *locked_active_child_pid() = None;
 
     let stdout_buf = stdout_reader.join().unwrap_or_default();
     let stderr_buf = stderr_reader.join().unwrap_or_default();

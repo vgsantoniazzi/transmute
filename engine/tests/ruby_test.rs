@@ -269,10 +269,7 @@ fn test_overlapping_mutations_inside_string_literal_are_deduped() {
 #[test]
 fn test_no_mutations_emitted_for_trailing_comment_text() {
     let (path, items) = mutations_for("x = 5 # threshold == 5", "trailing_comment");
-    let comment_mutations: Vec<_> = items
-        .iter()
-        .filter(|m| m.start >= 6)
-        .collect();
+    let comment_mutations: Vec<_> = items.iter().filter(|m| m.start >= 6).collect();
     assert!(
         comment_mutations.is_empty(),
         "Mutations must not be emitted from comment region; got: {:?}",

@@ -2,12 +2,20 @@ use glob::glob;
 use log::{info, trace, warn};
 use serde::Serialize;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 pub mod ruby;
 
-type ActiveMutations = Vec<(String, Vec<u8>)>;
+struct ActiveMutation {
+    token: u64,
+    file_path: String,
+    original: Vec<u8>,
+}
+
+type ActiveMutations = Vec<ActiveMutation>;
 static ACTIVE_MUTATIONS: OnceLock<Mutex<ActiveMutations>> = OnceLock::new();
+static NEXT_GUARD_TOKEN: AtomicU64 = AtomicU64::new(1);
 
 fn active_mutations() -> &'static Mutex<ActiveMutations> {
     ACTIVE_MUTATIONS.get_or_init(|| Mutex::new(Vec::new()))
@@ -22,10 +30,21 @@ fn locked_active_mutations() -> std::sync::MutexGuard<'static, ActiveMutations> 
 
 pub fn restore_active_mutations() {
     let mut guard = locked_active_mutations();
-    for (path, bytes) in guard.drain(..) {
-        let _ = std::fs::write(&path, &bytes);
-        let tmp = format!("{}.transmute.{}.tmp", path, std::process::id());
+    for entry in guard.drain(..) {
+        if let Err(e) = std::fs::write(&entry.file_path, &entry.original) {
+            eprintln!(
+                "FATAL: could not restore {} on signal: {}",
+                entry.file_path, e
+            );
+        }
+        let tmp = format!("{}.transmute.{}.tmp", entry.file_path, std::process::id());
         let _ = std::fs::remove_file(&tmp);
+        let restore_tmp = format!(
+            "{}.transmute.restore.{}.tmp",
+            entry.file_path,
+            std::process::id()
+        );
+        let _ = std::fs::remove_file(&restore_tmp);
     }
 }
 
@@ -156,16 +175,26 @@ impl MutableItem {
 pub struct MutationGuard<'a> {
     file_path: &'a str,
     original: Vec<u8>,
+    token: u64,
 }
 
 impl<'a> MutationGuard<'a> {
     pub fn apply(file_path: &'a str, item: &MutableItem) -> std::io::Result<MutationGuard<'a>> {
         let original = std::fs::read(file_path)?;
-        item.write_mutation(&original, file_path)?;
-        locked_active_mutations().push((file_path.to_string(), original.clone()));
+        let token = NEXT_GUARD_TOKEN.fetch_add(1, Ordering::Relaxed);
+        locked_active_mutations().push(ActiveMutation {
+            token,
+            file_path: file_path.to_string(),
+            original: original.clone(),
+        });
+        if let Err(e) = item.write_mutation(&original, file_path) {
+            locked_active_mutations().retain(|entry| entry.token != token);
+            return Err(e);
+        }
         Ok(MutationGuard {
             file_path,
             original,
+            token,
         })
     }
 }
@@ -186,7 +215,7 @@ impl<'a> Drop for MutationGuard<'a> {
             let _ = std::fs::remove_file(&restore_tmp);
             eprintln!("FATAL: could not restore {}: {}", self.file_path, e);
         }
-        locked_active_mutations().retain(|(p, _)| p != self.file_path);
+        locked_active_mutations().retain(|entry| entry.token != self.token);
     }
 }
 

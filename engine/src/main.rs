@@ -54,6 +54,7 @@ fn main() {
     );
 
     ctrlc::set_handler(|| {
+        runner::kill_active_child();
         file::restore_active_mutations();
         exit(130);
     })
