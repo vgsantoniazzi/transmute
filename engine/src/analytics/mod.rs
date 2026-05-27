@@ -38,7 +38,15 @@ impl AnalyticsResult {
     pub fn failures(&self) -> usize {
         self.mutations
             .iter()
-            .group_by(|m| (m.file_path.clone(), m.item.replace.clone()))
+            .group_by(|m| {
+                (
+                    m.file_path.clone(),
+                    m.item.line_number,
+                    m.item.start,
+                    m.item.end,
+                    m.item.replace.clone(),
+                )
+            })
             .into_iter()
             .map(|(_, group)| group.into_iter().any(|r| r.exit_code != 0))
             .filter(|killed| !killed)

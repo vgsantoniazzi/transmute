@@ -21,6 +21,36 @@ fn test_failures_callable_via_immutable_reference() {
 }
 
 #[test]
+fn test_failures_does_not_merge_distinct_mutations_with_colliding_replace() {
+    let mut r = analytics::AnalyticsResult::start(1);
+    let a = file::MutableItem {
+        line_number: 1,
+        start: 0,
+        end: 1,
+        implementation: "x".to_string(),
+        content: "x".to_string(),
+        replace: "AAA".to_string(),
+    };
+    let b = file::MutableItem {
+        line_number: 2,
+        start: 0,
+        end: 1,
+        implementation: "y".to_string(),
+        content: "y".to_string(),
+        replace: "AAA".to_string(),
+    };
+
+    r.add("f.rb", &a, 0, "".to_string());
+    r.add("f.rb", &b, 1, "".to_string());
+
+    assert_eq!(
+        r.failures(),
+        1,
+        "Distinct mutations with the same random replace must not merge"
+    );
+}
+
+#[test]
 fn test_failures_counts_groups_where_all_specs_passed() {
     let mut r = analytics::AnalyticsResult::start(1);
     let survived = item("b");
