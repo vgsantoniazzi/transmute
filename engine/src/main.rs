@@ -82,9 +82,15 @@ fn main() {
             let specs = coverage.find(&file.path, mutable.line_number);
             if specs.is_empty() {
                 warn!(
-                    "No specs cover {}:{}; skipping mutation.",
+                    "No specs cover {}:{}; recording as surviving.",
                     file.path, mutable.line_number
                 );
+                analytics.add(&file.path, mutable, 0, String::new());
+                failed = true;
+                if args.fail_fast {
+                    formatter::generate(analytics, &args.formatter, &args.output);
+                    exit(1);
+                }
                 continue 'mutate;
             }
 
@@ -127,6 +133,7 @@ fn main() {
 
             if args.fail_fast {
                 drop(_guard);
+                formatter::generate(analytics, &args.formatter, &args.output);
                 exit(1);
             }
         }

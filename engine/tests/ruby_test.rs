@@ -267,6 +267,33 @@ fn test_overlapping_mutations_inside_string_literal_are_deduped() {
 }
 
 #[test]
+fn test_no_mutations_emitted_for_trailing_comment_text() {
+    let (path, items) = mutations_for("x = 5 # threshold == 5", "trailing_comment");
+    let comment_mutations: Vec<_> = items
+        .iter()
+        .filter(|m| m.start >= 6)
+        .collect();
+    assert!(
+        comment_mutations.is_empty(),
+        "Mutations must not be emitted from comment region; got: {:?}",
+        comment_mutations
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_hash_inside_string_is_not_treated_as_comment_start() {
+    let (path, items) = mutations_for(r##"puts "# not a comment"; x = 5"##, "hash_in_string");
+    let numbers: Vec<&file::MutableItem> = items.iter().filter(|m| m.content == "5").collect();
+    assert!(
+        !numbers.is_empty(),
+        "Code after a string containing '#' must still be scanned; got: {:?}",
+        items
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
 fn test_ge_and_le_operators_are_matched_as_pairs() {
     let (path, items) = mutations_for("a >= b && c <= d", "ge_le");
     let contents: Vec<&String> = items.iter().map(|m| &m.content).collect();

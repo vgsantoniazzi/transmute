@@ -37,21 +37,22 @@ pub fn find_all(file_path: &str, line_number: u32) -> Vec<MutableItem> {
 }
 
 fn find_mutable_items(string: &str) -> Vec<(String, String, usize, usize)> {
+    let scan = &string[..comment_start(string)];
     let mut items: Vec<(String, String, usize, usize)> = Vec::new();
 
-    for (matched, start) in find_strings(string) {
+    for (matched, start) in find_strings(scan) {
         let end = start + matched.len();
         let replace = format!(r#""{}""#, generate(6, STRING_CHARSET));
         items.push((matched, replace, start, end));
     }
 
-    for (matched, start) in find_symbols(string) {
+    for (matched, start) in find_symbols(scan) {
         let end = start + matched.len();
         let replace = format!(":{}", generate(6, STRING_CHARSET));
         items.push((matched, replace, start, end));
     }
 
-    for (matched, start) in find_numbers(string) {
+    for (matched, start) in find_numbers(scan) {
         let end = start + matched.len();
         let replace = format!(
             "{}{}",
@@ -61,19 +62,19 @@ fn find_mutable_items(string: &str) -> Vec<(String, String, usize, usize)> {
         items.push((matched, replace, start, end));
     }
 
-    for (matched, start) in find_operators(string) {
+    for (matched, start) in find_operators(scan) {
         let end = start + matched.len();
         let replace = random_other_operator(&matched, &OPERATOR_CHARSET);
         items.push((matched, replace, start, end));
     }
 
-    for (matched, start) in find_less_than_operators(string) {
+    for (matched, start) in find_less_than_operators(scan) {
         let end = start + matched.len();
         let replace = random_other_operator(&matched, &OPERATOR_CHARSET);
         items.push((matched, replace, start, end));
     }
 
-    for (matched, start) in find_eq_operators(string) {
+    for (matched, start) in find_eq_operators(scan) {
         let end = start + matched.len();
         let replace = random_other_operator(&matched, &EQUALITY_OPERATOR_CHARSET);
         items.push((matched, replace, start, end));
@@ -95,6 +96,28 @@ fn dedupe_overlapping(
         }
     }
     out
+}
+
+fn comment_start(string: &str) -> usize {
+    let double = Regex::new(r#""(?:[^"\\]|\\.)*""#).unwrap();
+    let single = Regex::new(r#"'(?:[^'\\]|\\.)*'"#).unwrap();
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    for m in double.find_iter(string) {
+        ranges.push((m.start(), m.end()));
+    }
+    for m in single.find_iter(string) {
+        ranges.push((m.start(), m.end()));
+    }
+    for (i, b) in string.bytes().enumerate() {
+        if b != b'#' {
+            continue;
+        }
+        if ranges.iter().any(|(s, e)| i >= *s && i < *e) {
+            continue;
+        }
+        return i;
+    }
+    string.len()
 }
 
 fn random_other_operator(current: &str, charset: &[&str]) -> String {

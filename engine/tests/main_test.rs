@@ -66,7 +66,7 @@ fn test_logging() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_exits_zero_when_no_specs_cover_any_mutation() -> Result<(), Box<dyn std::error::Error>> {
+fn test_uncovered_mutation_is_recorded_as_surviving() -> Result<(), Box<dyn std::error::Error>> {
     let dir = scratch_dir("no_specs");
     let rb_path = dir.join("scratch.rb");
     std::fs::write(&rb_path, "puts 42\n").unwrap();
@@ -80,8 +80,8 @@ fn test_exits_zero_when_no_specs_cover_any_mutation() -> Result<(), Box<dyn std:
     cmd.arg("--log-level").arg("warn");
 
     cmd.assert()
-        .success()
-        .stderr(predicate::str::contains("No specs cover"));
+        .failure()
+        .stderr(predicate::str::contains("recording as surviving"));
 
     std::fs::remove_dir_all(&dir).ok();
     Ok(())
@@ -104,7 +104,7 @@ fn test_writes_json_with_failure_count_to_custom_output_path(
     cmd.arg("--output").arg(output_path.to_str().unwrap());
     cmd.arg("--log-level").arg("warn");
 
-    cmd.assert().success();
+    cmd.assert().failure();
     assert!(
         output_path.exists(),
         "Output should be written to specified --output path"
