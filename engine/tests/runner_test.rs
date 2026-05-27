@@ -1,5 +1,4 @@
-#[path = "../src/runner/mod.rs"]
-mod runner;
+use transmute::runner;
 
 use std::time::{Duration, Instant};
 

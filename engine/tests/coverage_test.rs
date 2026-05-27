@@ -1,5 +1,4 @@
-#[path = "../src/coverage/mod.rs"]
-mod coverage;
+use transmute::coverage;
 
 use std::fs;
 use std::path::PathBuf;
@@ -59,10 +58,7 @@ fn test_find_returns_specs_when_file_path_is_absolute() {
     let cwd = std::env::current_dir().unwrap().display().to_string();
     let abs_file = format!("{}/tests/fixtures/app/user.rb", cwd);
     let mut path = std::env::temp_dir();
-    path.push(format!(
-        "transmute_test_{}_abs.json",
-        std::process::id()
-    ));
+    path.push(format!("transmute_test_{}_abs.json", std::process::id()));
     let content = format!(r#"{{"{}:3": ["./spec/user_spec.rb"]}}"#, abs_file);
     fs::write(&path, content).unwrap();
 

@@ -3,11 +3,7 @@ use log::{info, trace, warn};
 use std::process::exit;
 use std::time::Duration;
 
-mod analytics;
-mod coverage;
-mod file;
-mod formatter;
-mod runner;
+use transmute::{analytics, coverage, file, formatter, runner};
 
 /// transmute: Automatically change your code and make the tests fail. If don't, we will raise it for you.
 #[derive(Parser, Debug)]

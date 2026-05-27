@@ -1,5 +1,4 @@
-#[path = "../src/file/mod.rs"]
-mod file;
+use transmute::file;
 
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;

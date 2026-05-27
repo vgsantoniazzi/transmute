@@ -1,7 +1,5 @@
-#[path = "../src/analytics/mod.rs"]
-mod analytics;
-#[path = "../src/file/mod.rs"]
-mod file;
+use transmute::analytics;
+use transmute::file;
 
 fn item(replace: &str) -> file::MutableItem {
     file::MutableItem {
