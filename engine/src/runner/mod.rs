@@ -1,6 +1,7 @@
 use log::trace;
 use std::io::Read;
 use std::process::{Command, Stdio};
+use std::thread;
 use std::time::{Duration, Instant};
 
 pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
@@ -41,6 +42,11 @@ pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
         }
     };
 
+    let stdout = child.stdout.take().expect("stdout was piped");
+    let stderr = child.stderr.take().expect("stderr was piped");
+    let stdout_reader = thread::spawn(move || drain(stdout));
+    let stderr_reader = thread::spawn(move || drain(stderr));
+
     let start = Instant::now();
     let exit_code = loop {
         match child.try_wait() {
@@ -49,22 +55,35 @@ pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
                 if start.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();
+                    let _ = stdout_reader.join();
+                    let _ = stderr_reader.join();
                     return (124, format!("transmute: timed out after {:?}\n", timeout));
                 }
-                std::thread::sleep(Duration::from_millis(50));
+                thread::sleep(Duration::from_millis(50));
             }
-            Err(e) => panic!("wait failed: {}", e),
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return (125, format!("transmute: wait failed: {}\n", e));
+            }
         }
     };
 
-    let mut buf = String::new();
-    if let Some(mut out) = child.stdout.take() {
-        let _ = out.read_to_string(&mut buf);
-    }
-    let stdout: String = buf
+    let stdout_buf = stdout_reader.join().unwrap_or_default();
+    let _ = stderr_reader.join();
+
+    let stdout = stdout_buf
         .lines()
         .map(|line| format!("{}\n", line))
         .collect::<String>();
 
     (exit_code, stdout)
+}
+
+fn drain<R: Read>(mut r: R) -> String {
+    let mut buf = String::new();
+    let _ = r.read_to_string(&mut buf);
+    buf
 }

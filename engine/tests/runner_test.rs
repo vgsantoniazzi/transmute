@@ -68,6 +68,25 @@ fn test_run_does_not_execute_injected_command_in_spec_path() {
 }
 
 #[test]
+fn test_run_does_not_deadlock_on_large_stdout() {
+    let (exit_code, stdout) = runner::run(
+        r#"sh -c 'yes x | head -c 524288'"#,
+        "",
+        Duration::from_secs(10),
+    );
+    assert_eq!(
+        exit_code, 0,
+        "Command should complete cleanly (got code {} — 124 means timeout/deadlock)",
+        exit_code
+    );
+    assert!(
+        stdout.len() > 100_000,
+        "Should have captured the large stdout; got {} bytes",
+        stdout.len()
+    );
+}
+
+#[test]
 fn test_run_kills_command_that_exceeds_timeout() {
     let start = Instant::now();
     let (exit_code, _stdout) = runner::run("sleep 30", "", Duration::from_millis(500));
