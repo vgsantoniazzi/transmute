@@ -110,11 +110,20 @@ fn find_mutable_items(string: &str) -> Vec<(String, String, usize, usize)> {
 
     for (matched, start) in find_numbers(scan) {
         let end = start + matched.len();
-        let replace = format!(
+        let mut replace = format!(
             "{}{}",
             generate(1, NUMBER_LEADING_CHARSET),
             generate(2, NUMBER_CHARSET)
         );
+        let mut attempts = 0;
+        while replace == matched && attempts < 8 {
+            replace = format!(
+                "{}{}",
+                generate(1, NUMBER_LEADING_CHARSET),
+                generate(2, NUMBER_CHARSET)
+            );
+            attempts += 1;
+        }
         items.push((matched, replace, start, end));
     }
 
@@ -273,8 +282,10 @@ fn find_numbers(string: &str) -> Vec<(String, usize)> {
 }
 
 fn find_operators(string: &str) -> Vec<(String, usize)> {
+    let bytes = string.as_bytes();
     re_op_general()
         .find_iter(string)
+        .filter(|m| !is_part_of_spaceship_or_arrow(bytes, m.start(), m.as_str().len()))
         .map(|m| {
             trace!("Operator {} found", m.as_str());
             (m.as_str().to_string(), m.start())
@@ -307,9 +318,23 @@ fn find_less_than_operators(string: &str) -> Vec<(String, usize)> {
     result
 }
 
+fn is_part_of_spaceship_or_arrow(bytes: &[u8], pos: usize, len: usize) -> bool {
+    let prev = if pos > 0 { bytes[pos - 1] } else { 0 };
+    let next = bytes.get(pos + len).copied().unwrap_or(0);
+    prev == b'<' || next == b'>'
+}
+
+fn is_part_of_triple_equals(bytes: &[u8], pos: usize, len: usize) -> bool {
+    let prev = if pos > 0 { bytes[pos - 1] } else { 0 };
+    let next = bytes.get(pos + len).copied().unwrap_or(0);
+    prev == b'=' || next == b'='
+}
+
 fn find_eq_operators(string: &str) -> Vec<(String, usize)> {
+    let bytes = string.as_bytes();
     re_op_eq()
         .find_iter(string)
+        .filter(|m| !is_part_of_triple_equals(bytes, m.start(), m.as_str().len()))
         .map(|m| {
             trace!("Operator {} found", m.as_str());
             (m.as_str().to_string(), m.start())

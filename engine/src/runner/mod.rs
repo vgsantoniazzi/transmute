@@ -95,7 +95,7 @@ pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
 }
 
 fn drain<R: Read>(mut r: R) -> String {
-    let mut buf = String::new();
-    let _ = r.read_to_string(&mut buf);
-    buf
+    let mut buf: Vec<u8> = Vec::new();
+    let _ = r.read_to_end(&mut buf);
+    String::from_utf8_lossy(&buf).into_owned()
 }
