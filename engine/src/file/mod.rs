@@ -1,7 +1,6 @@
 use glob::glob;
 use log::{info, trace, warn};
 use serde::Serialize;
-use std::io::Write;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
@@ -88,19 +87,33 @@ impl MutableItem {
             self.content, self.replace, file_path, self.line_number
         );
 
-        let file_content = read_lines(file_path);
-        let tmp_path = format!("{}.transmute.tmp", file_path);
-        {
-            let mut file = std::fs::File::create(&tmp_path).expect("Can't open file for writing");
-            let mut line_counter = 0;
-            for mut line_content in file_content {
-                line_counter += 1;
-                if line_counter == self.line_number {
-                    line_content.replace_range(self.start..self.end, &self.replace);
-                }
-                writeln!(file, "{}", line_content).unwrap();
+        let original = std::fs::read(file_path).expect("Unable to read file");
+
+        let mut line_starts: Vec<usize> = vec![0];
+        for (i, &b) in original.iter().enumerate() {
+            if b == b'\n' {
+                line_starts.push(i + 1);
             }
         }
+
+        let line_idx = (self.line_number as usize).saturating_sub(1);
+        if line_idx >= line_starts.len() {
+            return;
+        }
+        let line_start = line_starts[line_idx];
+        let abs_start = line_start + self.start;
+        let abs_end = line_start + self.end;
+        if abs_end > original.len() {
+            return;
+        }
+
+        let mut out = Vec::with_capacity(original.len() + self.replace.len());
+        out.extend_from_slice(&original[..abs_start]);
+        out.extend_from_slice(self.replace.as_bytes());
+        out.extend_from_slice(&original[abs_end..]);
+
+        let tmp_path = format!("{}.transmute.tmp", file_path);
+        std::fs::write(&tmp_path, &out).expect("Can't write temp file");
         std::fs::rename(&tmp_path, file_path).expect("Can't rename mutated file");
     }
 }

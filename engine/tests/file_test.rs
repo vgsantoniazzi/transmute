@@ -86,6 +86,31 @@ fn test_find_mutations_handles_non_utf8_lines_without_panic() {
 }
 
 #[test]
+fn test_transmute_preserves_crlf_and_no_trailing_newline() {
+    let scratch = scratch_path("crlf_preserve");
+    let original: &[u8] = b"puts 42\r\nputs 99";
+    std::fs::write(&scratch, original).unwrap();
+
+    let item = file::MutableItem {
+        line_number: 1,
+        start: 5,
+        end: 7,
+        implementation: "puts 42".to_string(),
+        content: "42".to_string(),
+        replace: "10".to_string(),
+    };
+    item.transmute(scratch.to_str().unwrap());
+
+    let after = std::fs::read(&scratch).unwrap();
+    assert_eq!(
+        after, b"puts 10\r\nputs 99",
+        "CRLF and absent trailing newline must be preserved byte-exact"
+    );
+
+    std::fs::remove_file(&scratch).ok();
+}
+
+#[test]
 fn test_source_file_restored_when_caller_panics() {
     let scratch = scratch_path("guard_panic");
     let original = b"puts 42\n";
