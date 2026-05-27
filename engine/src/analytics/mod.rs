@@ -36,7 +36,7 @@ impl AnalyticsResult {
     }
 
     pub fn failures(&self) -> usize {
-        let mut killed: HashMap<(&str, u32, usize, usize, &str), bool> = HashMap::new();
+        let mut state: HashMap<(&str, u32, usize, usize, &str), (bool, bool)> = HashMap::new();
         for m in self.mutations.iter() {
             let key = (
                 m.file_path.as_str(),
@@ -45,10 +45,15 @@ impl AnalyticsResult {
                 m.item.end,
                 m.item.replace.as_str(),
             );
-            let entry = killed.entry(key).or_insert(false);
+            let entry = state.entry(key).or_insert((false, false));
             let real_kill = m.exit_code != 0 && !runner::is_infra_error(m.exit_code);
-            *entry = *entry || real_kill;
+            let real_run = !runner::is_infra_error(m.exit_code);
+            entry.0 = entry.0 || real_kill;
+            entry.1 = entry.1 || real_run;
         }
-        killed.values().filter(|killed| !**killed).count()
+        state
+            .values()
+            .filter(|(killed, had_real_run)| *had_real_run && !*killed)
+            .count()
     }
 }
