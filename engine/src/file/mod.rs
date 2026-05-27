@@ -84,10 +84,11 @@ impl MutableItem {
     #[allow(dead_code)]
     pub fn transmute(&self, file_path: &str) {
         let original = std::fs::read(file_path).expect("Unable to read file");
-        self.write_mutation(&original, file_path);
+        self.write_mutation(&original, file_path)
+            .expect("write_mutation failed");
     }
 
-    pub fn write_mutation(&self, original: &[u8], file_path: &str) {
+    pub fn write_mutation(&self, original: &[u8], file_path: &str) -> std::io::Result<()> {
         info!(
             "Changing '{}' by '{}' on {}:{}",
             self.content, self.replace, file_path, self.line_number
@@ -102,13 +103,13 @@ impl MutableItem {
 
         let line_idx = (self.line_number as usize).saturating_sub(1);
         if line_idx >= line_starts.len() {
-            return;
+            return Ok(());
         }
         let line_start = line_starts[line_idx];
         let abs_start = line_start + self.start;
         let abs_end = line_start + self.end;
         if abs_end > original.len() {
-            return;
+            return Ok(());
         }
 
         if &original[abs_start..abs_end] != self.content.as_bytes() {
@@ -116,7 +117,7 @@ impl MutableItem {
                 "transmute: '{}' changed since scan; skipping mutation at line {}",
                 file_path, self.line_number
             );
-            return;
+            return Ok(());
         }
 
         let mut out = Vec::with_capacity(original.len() + self.replace.len());
@@ -125,8 +126,9 @@ impl MutableItem {
         out.extend_from_slice(&original[abs_end..]);
 
         let tmp_path = format!("{}.transmute.tmp", file_path);
-        std::fs::write(&tmp_path, &out).expect("Can't write temp file");
-        std::fs::rename(&tmp_path, file_path).expect("Can't rename mutated file");
+        std::fs::write(&tmp_path, &out)?;
+        std::fs::rename(&tmp_path, file_path)?;
+        Ok(())
     }
 }
 
@@ -143,7 +145,7 @@ impl<'a> MutationGuard<'a> {
             file_path,
             original,
         };
-        item.write_mutation(&guard.original, file_path);
+        item.write_mutation(&guard.original, file_path)?;
         Ok(guard)
     }
 }

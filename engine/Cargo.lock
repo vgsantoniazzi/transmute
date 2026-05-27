@@ -927,7 +927,6 @@ dependencies = [
  "ctrlc",
  "env_logger",
  "glob",
- "itertools",
  "log",
  "predicates",
  "rand",

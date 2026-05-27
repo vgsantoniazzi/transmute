@@ -1,7 +1,6 @@
-extern crate itertools;
+use std::collections::HashMap;
 
 use crate::file::MutableItem;
-use itertools::Itertools;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -36,20 +35,18 @@ impl AnalyticsResult {
     }
 
     pub fn failures(&self) -> usize {
-        self.mutations
-            .iter()
-            .group_by(|m| {
-                (
-                    m.file_path.as_str(),
-                    m.item.line_number,
-                    m.item.start,
-                    m.item.end,
-                    m.item.replace.as_str(),
-                )
-            })
-            .into_iter()
-            .map(|(_, group)| group.into_iter().any(|r| r.exit_code != 0))
-            .filter(|killed| !killed)
-            .count()
+        let mut killed: HashMap<(&str, u32, usize, usize, &str), bool> = HashMap::new();
+        for m in self.mutations.iter() {
+            let key = (
+                m.file_path.as_str(),
+                m.item.line_number,
+                m.item.start,
+                m.item.end,
+                m.item.replace.as_str(),
+            );
+            let entry = killed.entry(key).or_insert(false);
+            *entry = *entry || m.exit_code != 0;
+        }
+        killed.values().filter(|killed| !**killed).count()
     }
 }
