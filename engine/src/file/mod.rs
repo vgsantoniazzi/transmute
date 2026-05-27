@@ -17,6 +17,8 @@ pub fn restore_active_mutations() {
     let mut guard = active_mutations().lock().unwrap();
     for (path, bytes) in guard.drain(..) {
         let _ = std::fs::write(&path, &bytes);
+        let tmp = format!("{}.transmute.tmp", path);
+        let _ = std::fs::remove_file(&tmp);
     }
 }
 

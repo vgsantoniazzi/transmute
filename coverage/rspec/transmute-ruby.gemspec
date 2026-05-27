@@ -11,7 +11,7 @@ Gem::Specification.new do |spec|
   spec.summary       = 'Generate reverse relationsip between code and specs.'
   spec.description   = 'Ruby gem to help you to generate the reverse-coverage relationship between code and tests. The output is a `.transmute.json` file with key as source code + line and the value is an array with all specs that touch this particular line.'
   spec.homepage      = 'https://github.com/vgsantoniazzi/transmute'
-  spec.license       = 'MIT'
+  spec.license       = 'GPL-3.0'
   spec.required_ruby_version = Gem::Requirement.new('>= 2.4.0')
 
   spec.metadata['homepage_uri'] = spec.homepage

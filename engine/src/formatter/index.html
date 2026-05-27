@@ -117,7 +117,7 @@
   <body>
     <div class="navbar">
       <a target="_blank" href="https://github.com/vgsantoniazzi/transmute/">Transmute</a>
-      <a target="_blank" href="mailto:vgsantoniazzi@gmail.con" style="float: right">Contact</a>
+      <a target="_blank" href="mailto:vgsantoniazzi@gmail.com" style="float: right">Contact</a>
       <a target="_blank" href="https://github.com/vgsantoniazzi/transmute/" style="float: right">Docs</a>
     </div>
 
@@ -153,7 +153,7 @@
       <a style="float: right; cursor: pointer;" onclick="expandAll()">Expand</a>
     </div>
 
-    </br>
+    <br>
 
     {% for file_path, mutations_by_line in analytics.mutations | group_by(attribute="file_path") %}
       <div>
