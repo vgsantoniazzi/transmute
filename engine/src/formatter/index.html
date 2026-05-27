@@ -145,6 +145,10 @@
         <p class="details" style="color: #F24726">{{ failures }}</p>
         <p class="title">Failures</p>
       </div>
+      <div class="analytics">
+        <p class="details" style="color: #F5A623">{{ low_confidence_failures }}</p>
+        <p class="title">Low-confidence (subset of Failures)</p>
+      </div>
     </div>
 
     <div class="navbar">
@@ -162,7 +166,7 @@
           {% for item_replace, mutations in mutations_by_line | group_by(attribute="item.replace") %}
             <div>
               <code class="collapsible">
-                {{ mutations[0].item.line_number }} | {{ mutations[0].item.implementation }} {% if mutations | filter(attribute="exit_code", value=0) | length == mutations | length %} 🚩 {% else %} ✅ {% endif %} - (<label style="text-decoration: line-through">{{mutations[0].item.content}}</label> {{ item_replace }})
+                {{ mutations[0].item.line_number }} | {{ mutations[0].item.implementation }} {% if mutations | filter(attribute="exit_code", value=0) | length == mutations | length %} 🚩{% if mutations[0].coverage_complete == false %} ⚠️ low-confidence{% endif %} {% else %} ✅ {% endif %} - (<label style="text-decoration: line-through">{{mutations[0].item.content}}</label> {{ item_replace }})
               </code>
               {% for mutation in mutations %}
                 <code style="display: none; font-size: 14px; white-space: pre; color: {% if mutation.exit_code == 0 %} green {% else %} red {% endif %}">

@@ -3,6 +3,7 @@ use log::{info, trace, warn};
 use std::process::exit;
 use std::time::Duration;
 
+use transmute::coverage::CoverageMode;
 use transmute::file::ruby as ruby_mod;
 use transmute::{analytics, coverage, file, formatter, runner};
 
@@ -18,9 +19,13 @@ struct Args {
     #[clap(long)]
     command: String,
 
-    /// Coverage file name
-    #[clap(long, default_value = "transmute.json")]
+    /// Coverage database path
+    #[clap(long, default_value = "transmute.sqlite")]
     coverage: String,
+
+    /// How many specs to run per mutation: low (3 narrowest), medium (10), high (all). Default high preserves the original semantics; low/medium trade accuracy for speed.
+    #[clap(long, default_value = "high")]
+    coverage_mode: String,
 
     /// fail fast
     #[clap(long)]
@@ -60,7 +65,7 @@ fn main() {
     })
     .expect("Error setting Ctrl-C handler");
 
-    info!("Starting transmute.");
+    info!("Starting transmute (coverage-mode={}).", args.coverage_mode);
 
     ruby_mod::init_rng(args.seed);
 
@@ -71,6 +76,14 @@ fn main() {
         );
         exit(2);
     }
+
+    let coverage_mode = match CoverageMode::parse(&args.coverage_mode) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("transmute: {}", e);
+            exit(2);
+        }
+    };
 
     let coverage = match coverage::Coverage::load(&args.coverage) {
         Ok(c) => c,
@@ -89,13 +102,15 @@ fn main() {
 
     for file in files.iter() {
         'mutate: for mutable in file.mutable_items.iter() {
-            let specs = coverage.find(&file.path, mutable.line_number);
+            let match_ = coverage.find(&file.path, mutable.line_number, coverage_mode);
+            let specs = match_.specs;
+            let coverage_complete = match_.complete;
             if specs.is_empty() {
                 warn!(
                     "No specs cover {}:{}; recording as surviving.",
                     file.path, mutable.line_number
                 );
-                analytics.add(&file.path, mutable, 0, String::new());
+                analytics.add(&file.path, mutable, 0, String::new(), coverage_complete);
                 failed = true;
                 if args.fail_fast {
                     formatter::generate(analytics, &args.formatter, &args.output);
@@ -120,7 +135,7 @@ fn main() {
                     runner::run(&args.command, spec_file, Duration::from_secs(args.timeout));
 
                 trace!("{}", stdout);
-                analytics.add(&file.path, mutable, exit_code, stdout);
+                analytics.add(&file.path, mutable, exit_code, stdout, coverage_complete);
 
                 total_runs += 1;
                 if runner::is_infra_error(exit_code) {

@@ -32,8 +32,8 @@ fn test_failures_does_not_merge_distinct_mutations_with_colliding_replace() {
         replace: "AAA".to_string(),
     };
 
-    r.add("f.rb", &a, 0, "".to_string());
-    r.add("f.rb", &b, 1, "".to_string());
+    r.add("f.rb", &a, 0, "".to_string(), true);
+    r.add("f.rb", &b, 1, "".to_string(), true);
 
     assert_eq!(
         r.failures(),
@@ -60,10 +60,10 @@ fn test_failures_counts_groups_where_all_specs_passed() {
     let survived = item(0, "b");
     let killed = item(2, "c");
 
-    r.add("file.rb", &survived, 0, "out".to_string());
-    r.add("file.rb", &survived, 0, "out".to_string());
-    r.add("file.rb", &killed, 1, "out".to_string());
-    r.add("file.rb", &killed, 0, "out".to_string());
+    r.add("file.rb", &survived, 0, "out".to_string(), true);
+    r.add("file.rb", &survived, 0, "out".to_string(), true);
+    r.add("file.rb", &killed, 1, "out".to_string(), true);
+    r.add("file.rb", &killed, 0, "out".to_string(), true);
 
     assert_eq!(
         r.failures(),
@@ -77,8 +77,8 @@ fn test_infra_only_run_is_not_counted_as_survivor() {
     let mut r = analytics::AnalyticsResult::start(1);
     let only_infra = item(0, "z");
 
-    r.add("file.rb", &only_infra, 127, "spawn fail".to_string());
-    r.add("file.rb", &only_infra, 124, "timeout".to_string());
+    r.add("file.rb", &only_infra, 127, "spawn fail".to_string(), true);
+    r.add("file.rb", &only_infra, 124, "timeout".to_string(), true);
 
     assert_eq!(
         r.failures(),
@@ -92,12 +92,44 @@ fn test_mixed_infra_and_real_run_counts_only_when_real_run_passes() {
     let mut r = analytics::AnalyticsResult::start(1);
     let m = item(0, "z");
 
-    r.add("file.rb", &m, 127, "spawn fail".to_string());
-    r.add("file.rb", &m, 0, "real pass".to_string());
+    r.add("file.rb", &m, 127, "spawn fail".to_string(), true);
+    r.add("file.rb", &m, 0, "real pass".to_string(), true);
 
     assert_eq!(
         r.failures(),
         1,
         "Once a real run is observed and it passes, the mutation is a survivor"
     );
+}
+
+#[test]
+fn test_low_confidence_failures_counts_survivors_with_incomplete_coverage() {
+    let mut r = analytics::AnalyticsResult::start(1);
+    let complete_survivor = item(0, "a");
+    let incomplete_survivor = item(2, "b");
+    let incomplete_killed = item(4, "c");
+
+    r.add("file.rb", &complete_survivor, 0, "".to_string(), true);
+    r.add("file.rb", &incomplete_survivor, 0, "".to_string(), false);
+    r.add("file.rb", &incomplete_killed, 1, "".to_string(), false);
+
+    assert_eq!(
+        r.failures(),
+        2,
+        "Both survivors must be counted as failures"
+    );
+    assert_eq!(
+        r.low_confidence_failures(),
+        1,
+        "Only the survivor with incomplete coverage is low-confidence"
+    );
+}
+
+#[test]
+fn test_low_confidence_failures_is_zero_when_all_runs_used_complete_coverage() {
+    let mut r = analytics::AnalyticsResult::start(1);
+    let survived = item(0, "a");
+    r.add("file.rb", &survived, 0, "".to_string(), true);
+    assert_eq!(r.failures(), 1);
+    assert_eq!(r.low_confidence_failures(), 0);
 }

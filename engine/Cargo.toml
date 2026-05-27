@@ -1,6 +1,6 @@
 [package]
 name = "transmute"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -17,6 +17,7 @@ rand = "0.8"
 tera = "1"
 ctrlc = "3"
 shlex = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 [dev-dependencies]
 assert_cmd = "2.0"

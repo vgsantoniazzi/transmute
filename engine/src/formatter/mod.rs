@@ -9,6 +9,7 @@ use crate::analytics::AnalyticsResult;
 #[derive(Serialize)]
 struct Report<'a> {
     failures: usize,
+    low_confidence_failures: usize,
     analytics: &'a AnalyticsResult,
 }
 
@@ -42,6 +43,10 @@ fn generate_html(analytics: &AnalyticsResult, output_path: &str) {
     let mut context = Context::new();
     context.insert("analytics", analytics);
     context.insert("failures", &analytics.failures());
+    context.insert(
+        "low_confidence_failures",
+        &analytics.low_confidence_failures(),
+    );
     let content = tera
         .render("index.html", &context)
         .expect("HTML template must render with the analytics model");
@@ -51,6 +56,7 @@ fn generate_html(analytics: &AnalyticsResult, output_path: &str) {
 fn generate_json(analytics: &AnalyticsResult, output_path: &str) {
     let report = Report {
         failures: analytics.failures(),
+        low_confidence_failures: analytics.low_confidence_failures(),
         analytics,
     };
     let content = serde_json::to_string_pretty(&report)

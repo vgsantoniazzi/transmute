@@ -31,8 +31,22 @@ fn analytics_with_one_survivor_and_one_kill() -> analytics::AnalyticsResult {
         content: "1".to_string(),
         replace: "2".to_string(),
     };
-    r.add("a.rb", &survivor, 0, "survived".to_string());
-    r.add("b.rb", &killed, 1, "killed".to_string());
+    r.add("a.rb", &survivor, 0, "survived".to_string(), true);
+    r.add("b.rb", &killed, 1, "killed".to_string(), true);
+    r
+}
+
+fn analytics_with_one_low_confidence_survivor() -> analytics::AnalyticsResult {
+    let mut r = analytics::AnalyticsResult::start(1);
+    let survivor = file::MutableItem {
+        line_number: 5,
+        start: 0,
+        end: 2,
+        implementation: "x = 42".to_string(),
+        content: "42".to_string(),
+        replace: "99".to_string(),
+    };
+    r.add("a.rb", &survivor, 0, "survived".to_string(), false);
     r
 }
 
@@ -95,6 +109,51 @@ fn test_unknown_formatter_falls_back_to_json() {
     let json: serde_json::Value =
         serde_json::from_str(&content).expect("Unknown formatter must fall back to valid JSON");
     assert_eq!(json["failures"], 1);
+
+    std::fs::remove_file(&out).ok();
+}
+
+#[test]
+fn test_json_formatter_emits_low_confidence_failures_field() {
+    let out = scratch_path("low_conf_count", "json");
+    let r = analytics_with_one_low_confidence_survivor();
+
+    formatter::generate(r, "json", out.to_str().unwrap());
+
+    let content = std::fs::read_to_string(&out).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&content).expect("must be valid JSON");
+    assert_eq!(json["failures"], 1, "Survivor must count as failure");
+    assert_eq!(
+        json["low_confidence_failures"], 1,
+        "Survivor with coverage_complete=false must count as low-confidence; JSON: {}",
+        content
+    );
+    let mutations = json["analytics"]["mutations"].as_array().unwrap();
+    assert_eq!(
+        mutations[0]["coverage_complete"], false,
+        "Per-mutation coverage_complete flag must be emitted"
+    );
+
+    std::fs::remove_file(&out).ok();
+}
+
+#[test]
+fn test_html_formatter_shows_low_confidence_marker_for_filtered_survivors() {
+    let out = scratch_path("html_low_conf", "html");
+    let r = analytics_with_one_low_confidence_survivor();
+
+    formatter::generate(r, "html", out.to_str().unwrap());
+
+    let html = std::fs::read_to_string(&out).unwrap();
+    assert!(
+        html.contains("low-confidence"),
+        "HTML must mark low-confidence survivors so users can spot them; got: {}",
+        &html[..html.len().min(800)]
+    );
+    assert!(
+        html.contains("Low-confidence (subset of Failures)"),
+        "HTML must include a low-confidence count card"
+    );
 
     std::fs::remove_file(&out).ok();
 }

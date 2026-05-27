@@ -2,3 +2,7 @@ target/
 pkg/
 result.json
 index.html
+transmute.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm

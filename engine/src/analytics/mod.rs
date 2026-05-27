@@ -10,6 +10,7 @@ pub struct MutationResult {
     pub item: MutableItem,
     pub exit_code: i32,
     pub stdout: String,
+    pub coverage_complete: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -26,19 +27,39 @@ impl AnalyticsResult {
         }
     }
 
-    pub fn add(&mut self, file_path: &str, mutable: &MutableItem, exit_code: i32, stdout: String) {
+    pub fn add(
+        &mut self,
+        file_path: &str,
+        mutable: &MutableItem,
+        exit_code: i32,
+        stdout: String,
+        coverage_complete: bool,
+    ) {
         self.mutations.push(MutationResult {
             file_path: file_path.to_string(),
             item: mutable.clone(),
             exit_code,
             stdout,
+            coverage_complete,
         })
     }
 
     pub fn failures(&self) -> usize {
-        type MutationKey<'a> = (&'a str, u32, usize, usize);
-        type RunOutcome = (bool, bool);
-        let mut state: HashMap<MutationKey, RunOutcome> = HashMap::new();
+        self.survivor_outcomes()
+            .into_values()
+            .filter(|s| s.is_survivor())
+            .count()
+    }
+
+    pub fn low_confidence_failures(&self) -> usize {
+        self.survivor_outcomes()
+            .into_values()
+            .filter(|s| s.is_survivor() && !s.coverage_complete)
+            .count()
+    }
+
+    fn survivor_outcomes(&self) -> HashMap<MutationKey<'_>, SurvivorState> {
+        let mut state: HashMap<MutationKey, SurvivorState> = HashMap::new();
         for m in self.mutations.iter() {
             let key: MutationKey = (
                 m.file_path.as_str(),
@@ -46,15 +67,37 @@ impl AnalyticsResult {
                 m.item.start,
                 m.item.end,
             );
-            let entry = state.entry(key).or_insert((false, false));
+            let entry = state.entry(key).or_default();
             let real_kill = m.exit_code != 0 && !runner::is_infra_error(m.exit_code);
             let real_run = !runner::is_infra_error(m.exit_code);
-            entry.0 = entry.0 || real_kill;
-            entry.1 = entry.1 || real_run;
+            entry.killed = entry.killed || real_kill;
+            entry.had_real_run = entry.had_real_run || real_run;
+            entry.coverage_complete = entry.coverage_complete && m.coverage_complete;
         }
         state
-            .values()
-            .filter(|(killed, had_real_run)| *had_real_run && !*killed)
-            .count()
+    }
+}
+
+type MutationKey<'a> = (&'a str, u32, usize, usize);
+
+struct SurvivorState {
+    killed: bool,
+    had_real_run: bool,
+    coverage_complete: bool,
+}
+
+impl Default for SurvivorState {
+    fn default() -> Self {
+        SurvivorState {
+            killed: false,
+            had_real_run: false,
+            coverage_complete: true,
+        }
+    }
+}
+
+impl SurvivorState {
+    fn is_survivor(&self) -> bool {
+        self.had_real_run && !self.killed
     }
 }
