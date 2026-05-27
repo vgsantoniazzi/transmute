@@ -62,11 +62,7 @@ fn main() {
 
     info!("Starting transmute.");
 
-    ruby_mod::init_rng(if args.seed == 0 {
-        None
-    } else {
-        Some(args.seed)
-    });
+    ruby_mod::init_rng(args.seed);
 
     if !["json", "html"].contains(&args.formatter.as_str()) {
         eprintln!(

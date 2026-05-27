@@ -9,11 +9,13 @@ use crate::file::MutableItem;
 
 static RNG: OnceLock<Mutex<StdRng>> = OnceLock::new();
 
-pub fn init_rng(seed: Option<u64>) {
-    let rng_value = seed
-        .map(StdRng::seed_from_u64)
-        .unwrap_or_else(StdRng::from_entropy);
-    let _ = RNG.set(Mutex::new(rng_value));
+pub fn init_rng(seed: u64) {
+    let rng = if seed == 0 {
+        StdRng::from_entropy()
+    } else {
+        StdRng::seed_from_u64(seed)
+    };
+    let _ = RNG.set(Mutex::new(rng));
 }
 
 fn with_rng<F, R>(f: F) -> R

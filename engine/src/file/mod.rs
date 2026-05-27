@@ -28,6 +28,14 @@ fn locked_active_mutations() -> std::sync::MutexGuard<'static, ActiveMutations> 
     }
 }
 
+fn tmp_path(file_path: &str) -> String {
+    format!("{}.transmute.{}.tmp", file_path, std::process::id())
+}
+
+fn restore_tmp_path(file_path: &str) -> String {
+    format!("{}.transmute.restore.{}.tmp", file_path, std::process::id())
+}
+
 pub fn restore_active_mutations() {
     let mut guard = locked_active_mutations();
     for entry in guard.drain(..) {
@@ -37,14 +45,8 @@ pub fn restore_active_mutations() {
                 entry.file_path, e
             );
         }
-        let tmp = format!("{}.transmute.{}.tmp", entry.file_path, std::process::id());
-        let _ = std::fs::remove_file(&tmp);
-        let restore_tmp = format!(
-            "{}.transmute.restore.{}.tmp",
-            entry.file_path,
-            std::process::id()
-        );
-        let _ = std::fs::remove_file(&restore_tmp);
+        let _ = std::fs::remove_file(tmp_path(&entry.file_path));
+        let _ = std::fs::remove_file(restore_tmp_path(&entry.file_path));
     }
 }
 
@@ -165,9 +167,9 @@ impl MutableItem {
         out.extend_from_slice(self.replace.as_bytes());
         out.extend_from_slice(&original[abs_end..]);
 
-        let tmp_path = format!("{}.transmute.{}.tmp", file_path, std::process::id());
-        std::fs::write(&tmp_path, &out)?;
-        std::fs::rename(&tmp_path, file_path)?;
+        let tmp = tmp_path(file_path);
+        std::fs::write(&tmp, &out)?;
+        std::fs::rename(&tmp, file_path)?;
         Ok(())
     }
 }
@@ -202,13 +204,8 @@ impl<'a> MutationGuard<'a> {
 impl<'a> Drop for MutationGuard<'a> {
     fn drop(&mut self) {
         trace!("Restoring {}", self.file_path);
-        let tmp_path = format!("{}.transmute.{}.tmp", self.file_path, std::process::id());
-        let _ = std::fs::remove_file(&tmp_path);
-        let restore_tmp = format!(
-            "{}.transmute.restore.{}.tmp",
-            self.file_path,
-            std::process::id()
-        );
+        let _ = std::fs::remove_file(tmp_path(self.file_path));
+        let restore_tmp = restore_tmp_path(self.file_path);
         let atomic_restore = std::fs::write(&restore_tmp, &self.original)
             .and_then(|()| std::fs::rename(&restore_tmp, self.file_path));
         if let Err(e) = atomic_restore {
