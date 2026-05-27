@@ -6,7 +6,12 @@ use std::time::{Duration, Instant};
 pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
     let parts = match shlex::split(command) {
         Some(p) if !p.is_empty() => p,
-        _ => return (2, format!("transmute: cannot parse --command: {}\n", command)),
+        _ => {
+            return (
+                2,
+                format!("transmute: cannot parse --command: {}\n", command),
+            )
+        }
     };
     let argv: Vec<String> = parts
         .into_iter()
@@ -44,10 +49,7 @@ pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
                 if start.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return (
-                        124,
-                        format!("transmute: timed out after {:?}\n", timeout),
-                    );
+                    return (124, format!("transmute: timed out after {:?}\n", timeout));
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }

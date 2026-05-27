@@ -137,8 +137,7 @@ fn test_strings_treat_escaped_quotes_as_part_of_literal() {
         strings
     );
     assert_eq!(
-        strings[0].content,
-        r#""He said \"hi\"""#,
+        strings[0].content, r#""He said \"hi\"""#,
         "Captured content should be the full literal, not truncated at the first escaped quote"
     );
     std::fs::remove_file(&path).ok();
@@ -178,7 +177,10 @@ fn test_single_quoted_strings_inside_double_quoted_are_ignored() {
 #[test]
 fn test_symbols_inside_array_literal_are_detected() {
     let (path, items) = mutations_for("[:a, :b]", "symbols_in_array");
-    let syms: Vec<_> = items.iter().filter(|m| m.content.starts_with(':')).collect();
+    let syms: Vec<_> = items
+        .iter()
+        .filter(|m| m.content.starts_with(':'))
+        .collect();
     assert_eq!(
         syms.len(),
         2,
@@ -191,7 +193,10 @@ fn test_symbols_inside_array_literal_are_detected() {
 #[test]
 fn test_module_path_double_colon_is_not_a_symbol() {
     let (path, items) = mutations_for("Module::Foo.call", "module_path");
-    let syms: Vec<_> = items.iter().filter(|m| m.content.starts_with(':')).collect();
+    let syms: Vec<_> = items
+        .iter()
+        .filter(|m| m.content.starts_with(':'))
+        .collect();
     assert!(
         syms.is_empty(),
         "'::Foo' is a constant path, not a symbol; got: {:?}",
