@@ -40,11 +40,11 @@ impl AnalyticsResult {
             .iter()
             .group_by(|m| {
                 (
-                    m.file_path.clone(),
+                    m.file_path.as_str(),
                     m.item.line_number,
                     m.item.start,
                     m.item.end,
-                    m.item.replace.clone(),
+                    m.item.replace.as_str(),
                 )
             })
             .into_iter()

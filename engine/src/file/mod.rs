@@ -82,12 +82,15 @@ impl File {
 
 impl MutableItem {
     pub fn transmute(&self, file_path: &str) {
+        let original = std::fs::read(file_path).expect("Unable to read file");
+        self.write_mutation(&original, file_path);
+    }
+
+    pub fn write_mutation(&self, original: &[u8], file_path: &str) {
         info!(
             "Changing '{}' by '{}' on {}:{}",
             self.content, self.replace, file_path, self.line_number
         );
-
-        let original = std::fs::read(file_path).expect("Unable to read file");
 
         let mut line_starts: Vec<usize> = vec![0];
         for (i, &b) in original.iter().enumerate() {
@@ -139,7 +142,7 @@ impl<'a> MutationGuard<'a> {
             file_path,
             original,
         };
-        item.transmute(file_path);
+        item.write_mutation(&guard.original, file_path);
         Ok(guard)
     }
 }
