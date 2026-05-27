@@ -34,6 +34,30 @@ fn test_load_returns_err_when_json_is_malformed() {
 }
 
 #[test]
+fn test_find_skips_non_string_entries_without_panic() {
+    let cwd = std::env::current_dir().unwrap().display().to_string();
+    let mut path = std::env::temp_dir();
+    path.push(format!(
+        "transmute_test_{}_nonstring.json",
+        std::process::id()
+    ));
+    let content = format!(
+        r#"{{"{}/a.rb:1": ["ok.rb", 42, null, "ok2.rb"]}}"#,
+        cwd
+    );
+    fs::write(&path, content).unwrap();
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    assert_eq!(
+        cov.find("a.rb", 1),
+        vec!["ok.rb".to_string(), "ok2.rb".to_string()],
+        "Non-string entries should be silently filtered, not panic"
+    );
+
+    fs::remove_file(&path).ok();
+}
+
+#[test]
 fn test_find_returns_specs_for_known_line() {
     let fixture = write_fixture("test_find");
     let cov = coverage::Coverage::load(fixture.to_str().unwrap()).unwrap();

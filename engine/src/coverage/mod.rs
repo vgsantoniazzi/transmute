@@ -27,7 +27,7 @@ impl Coverage {
             .as_array()
             .unwrap_or(&empty)
             .iter()
-            .map(|item| item.as_str().unwrap().to_string())
+            .filter_map(|item| item.as_str().map(|s| s.to_string()))
             .collect()
     }
 
