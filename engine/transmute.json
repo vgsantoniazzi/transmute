@@ -83,15 +83,59 @@
     "./tests/fixtures/spec/app_spec.rb",
     "./tests/fixtures/spec/user_spec.rb"
   ],
-  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:21": [
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:22": [
     "./tests/fixtures/spec/app_spec.rb",
     "./tests/fixtures/spec/user_spec.rb"
   ],
-  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:25": [
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:23": [
     "./tests/fixtures/spec/app_spec.rb",
     "./tests/fixtures/spec/user_spec.rb"
   ],
-  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:29": [
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:27": [
+    "./tests/fixtures/spec/app_spec.rb",
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:32": [
+    "./tests/fixtures/spec/app_spec.rb",
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:33": [
+    "./tests/fixtures/spec/app_spec.rb",
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:37": [
+    "./tests/fixtures/spec/app_spec.rb",
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:41": [
+    "./tests/fixtures/spec/app_spec.rb",
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:45": [
+    "./tests/fixtures/spec/app_spec.rb",
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:49": [
+    "./tests/fixtures/spec/app_spec.rb",
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:54": [
+    "./tests/fixtures/spec/app_spec.rb",
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:55": [
+    "./tests/fixtures/spec/app_spec.rb",
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:59": [
+    "./tests/fixtures/spec/app_spec.rb",
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:63": [
+    "./tests/fixtures/spec/app_spec.rb",
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:67": [
     "./tests/fixtures/spec/app_spec.rb",
     "./tests/fixtures/spec/user_spec.rb"
   ],
@@ -107,28 +151,52 @@
   "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:10": [
     "./tests/fixtures/spec/user_spec.rb"
   ],
-  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/app/user.rb:9": [
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/app/user.rb:14": [
     "./tests/fixtures/spec/user_spec.rb"
   ],
   "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:14": [
     "./tests/fixtures/spec/user_spec.rb"
   ],
-  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/app/user.rb:10": [
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/app/user.rb:9": [
     "./tests/fixtures/spec/user_spec.rb"
   ],
   "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:18": [
     "./tests/fixtures/spec/user_spec.rb"
   ],
-  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:22": [
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:24": [
     "./tests/fixtures/spec/user_spec.rb"
   ],
-  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/app/user.rb:14": [
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:28": [
     "./tests/fixtures/spec/user_spec.rb"
   ],
-  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:26": [
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:34": [
     "./tests/fixtures/spec/user_spec.rb"
   ],
-  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:30": [
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:38": [
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:42": [
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/app/user.rb:10": [
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:46": [
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:50": [
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:56": [
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:60": [
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:64": [
+    "./tests/fixtures/spec/user_spec.rb"
+  ],
+  "/home/vgsantoniazzi/Code/github/transmute/engine/tests/fixtures/spec/user_spec.rb:68": [
     "./tests/fixtures/spec/user_spec.rb"
   ]
 }
