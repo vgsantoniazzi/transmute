@@ -8,14 +8,13 @@ fn test_when_cant_run() {
 }
 
 #[test]
-fn test_when_success() {
-    assert_eq!(runner::run("rspec {file}", ""), 0);
+fn test_returns_zero_exit_code_when_command_succeeds() {
+    let (exit_code, _stdout) = runner::run("sh -c true", "");
+    assert_eq!(exit_code, 0);
 }
 
 #[test]
-fn test_when_failure() {
-    assert_eq!(
-        runner::run("rspec {file}", "tests/fixtures/specs/user_error_spec.rb"),
-        1
-    );
+fn test_returns_nonzero_exit_code_when_command_fails() {
+    let (exit_code, _stdout) = runner::run("sh -c false", "");
+    assert_eq!(exit_code, 1);
 }
