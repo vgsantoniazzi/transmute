@@ -321,7 +321,12 @@ fn find_less_than_operators(string: &str) -> Vec<(String, usize)> {
 fn is_part_of_spaceship_or_arrow(bytes: &[u8], pos: usize, len: usize) -> bool {
     let prev = if pos > 0 { bytes[pos - 1] } else { 0 };
     let next = bytes.get(pos + len).copied().unwrap_or(0);
-    prev == b'<' || next == b'>'
+    // prev '<': shovel '<<' or the '<' of '<=>'.
+    // prev '=': trailing '>' of '<=>' or '=>' (hash rocket).
+    // prev '-': trailing '>' of '->' (stabby lambda).
+    // prev '>': second '>' of '>>' (right shift) or '>=' of '>>='.
+    // next '>': matched '<=' immediately followed by '>' inside '<=>'.
+    prev == b'<' || prev == b'=' || prev == b'-' || prev == b'>' || next == b'>'
 }
 
 fn is_part_of_triple_equals(bytes: &[u8], pos: usize, len: usize) -> bool {

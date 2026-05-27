@@ -187,6 +187,74 @@ fn test_drop_removes_lingering_tmp_file() {
 }
 
 #[test]
+fn test_drop_does_not_leave_restore_tmp_artifact() {
+    let scratch = scratch_path("drop_restore_tmp");
+    std::fs::write(&scratch, b"puts 42\n").unwrap();
+    let restore_tmp = format!(
+        "{}.transmute.restore.{}.tmp",
+        scratch.display(),
+        std::process::id()
+    );
+
+    let item = file::MutableItem {
+        line_number: 1,
+        start: 5,
+        end: 7,
+        implementation: "puts 42".to_string(),
+        content: "42".to_string(),
+        replace: "99".to_string(),
+    };
+    {
+        let _g = file::MutationGuard::apply(scratch.to_str().unwrap(), &item).unwrap();
+    }
+
+    assert!(
+        !std::path::Path::new(&restore_tmp).exists(),
+        "Drop must leave no .transmute.restore.<pid>.tmp behind after a successful atomic restore"
+    );
+
+    std::fs::remove_file(&scratch).ok();
+}
+
+#[test]
+fn test_two_guards_on_same_path_do_not_cross_remove_each_others_entry() {
+    let scratch_a = scratch_path("token_a");
+    let scratch_b = scratch_path("token_b");
+    std::fs::write(&scratch_a, b"puts 1\n").unwrap();
+    std::fs::write(&scratch_b, b"puts 1\n").unwrap();
+
+    let item = |c: &str, r: &str| file::MutableItem {
+        line_number: 1,
+        start: 5,
+        end: 6,
+        implementation: format!("puts {}", c),
+        content: c.to_string(),
+        replace: r.to_string(),
+    };
+
+    let g_a = file::MutationGuard::apply(scratch_a.to_str().unwrap(), &item("1", "9")).unwrap();
+    let g_b = file::MutationGuard::apply(scratch_b.to_str().unwrap(), &item("1", "8")).unwrap();
+
+    drop(g_a);
+
+    let after_b_while_b_still_held = std::fs::read(&scratch_b).unwrap();
+    assert_eq!(
+        after_b_while_b_still_held, b"puts 8\n",
+        "Dropping guard A must NOT trigger guard B's restore (different paths, different tokens)"
+    );
+
+    drop(g_b);
+
+    let after_a = std::fs::read(&scratch_a).unwrap();
+    let after_b = std::fs::read(&scratch_b).unwrap();
+    assert_eq!(after_a, b"puts 1\n");
+    assert_eq!(after_b, b"puts 1\n");
+
+    std::fs::remove_file(&scratch_a).ok();
+    std::fs::remove_file(&scratch_b).ok();
+}
+
+#[test]
 fn test_transmute_preserves_crlf_and_no_trailing_newline() {
     let scratch = scratch_path("crlf_preserve");
     let original: &[u8] = b"puts 42\r\nputs 99";

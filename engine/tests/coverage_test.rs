@@ -18,8 +18,15 @@ fn write_fixture(name: &str) -> PathBuf {
 
 #[test]
 fn test_load_returns_err_when_file_not_found() {
-    let result = coverage::Coverage::load("not_found.json");
-    assert!(result.is_err(), "Missing file should return Err, not panic");
+    let err = match coverage::Coverage::load("not_found.json") {
+        Err(e) => e,
+        Ok(_) => panic!("Missing file should return Err, not Ok"),
+    };
+    assert!(
+        err.contains("unable to read coverage file") && err.contains("not_found.json"),
+        "Error message must name the missing file; got: {}",
+        err
+    );
 }
 
 #[test]
@@ -27,8 +34,38 @@ fn test_load_returns_err_when_json_is_malformed() {
     let mut path = std::env::temp_dir();
     path.push(format!("transmute_test_{}_bad.json", std::process::id()));
     fs::write(&path, "not json").unwrap();
-    let result = coverage::Coverage::load(path.to_str().unwrap());
-    assert!(result.is_err(), "Invalid JSON should return Err, not panic");
+    let err = match coverage::Coverage::load(path.to_str().unwrap()) {
+        Err(e) => e,
+        Ok(_) => panic!("Invalid JSON should return Err, not Ok"),
+    };
+    assert!(
+        err.contains("unable to parse coverage JSON"),
+        "Error message must indicate parse failure; got: {}",
+        err
+    );
+    fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_find_normalizes_curdir_components_in_path() {
+    let cwd = std::env::current_dir().unwrap().display().to_string();
+    let mut path = std::env::temp_dir();
+    path.push(format!("transmute_test_{}_curdir.json", std::process::id()));
+    let content = format!(r#"{{"{}/a/b.rb:1": ["spec.rb"]}}"#, cwd);
+    fs::write(&path, content).unwrap();
+
+    let cov = coverage::Coverage::load(path.to_str().unwrap()).unwrap();
+    assert_eq!(
+        cov.find("./a/b.rb", 1),
+        vec!["spec.rb".to_string()],
+        "Leading './' must be stripped before lookup so the relative path matches the canonical key"
+    );
+    assert_eq!(
+        cov.find("a/./b.rb", 1),
+        vec!["spec.rb".to_string()],
+        "Mid-path './' segment must be normalized away"
+    );
+
     fs::remove_file(&path).ok();
 }
 

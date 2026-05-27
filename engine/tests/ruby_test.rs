@@ -55,10 +55,21 @@ fn test_numbers_skip_digits_inside_identifiers() {
 fn test_mutation_replaces_only_target_occurrence() {
     let (path, items) = mutations_for("puts 12345 || 12345", "position_replace");
     let mutations: Vec<_> = items.iter().filter(|m| m.content == "12345").collect();
-    assert!(
-        mutations.len() >= 2,
-        "Need at least 2 mutations for '12345', got {}",
-        mutations.len()
+    assert_eq!(
+        mutations.len(),
+        2,
+        "Input has exactly two '12345' tokens; got mutations: {:?}",
+        mutations
+    );
+    assert_eq!(
+        (mutations[0].start, mutations[0].end),
+        (5, 10),
+        "First mutation must point at byte offsets 5..10"
+    );
+    assert_eq!(
+        (mutations[1].start, mutations[1].end),
+        (14, 19),
+        "Second mutation must point at byte offsets 14..19"
     );
 
     mutations[0].transmute(path.to_str().unwrap());
@@ -74,10 +85,24 @@ fn test_mutation_replaces_only_target_occurrence() {
 }
 
 #[test]
-fn test_less_than_mutated_when_class_appears_only_inside_string() {
-    let (path, items) = mutations_for(r#"puts "class is X" if a < b"#, "lt_in_string");
+fn test_less_than_inside_string_literal_is_skipped_and_real_one_is_mutated() {
+    let (path, items) = mutations_for(
+        r#"puts "class User < Object" if a < b"#,
+        "lt_class_in_string",
+    );
     let lt: Vec<_> = items.iter().filter(|m| m.content == "<").collect();
-    assert_eq!(lt.len(), 1, "Expected '<' to be mutated; got: {:?}", items);
+    assert_eq!(
+        lt.len(),
+        1,
+        "Exactly the real '< b' (outside the string) must be mutated; the '<' inside the string literal must be skipped via comment_start scan; got: {:?}",
+        items
+    );
+    let only = lt[0];
+    let real_lt_pos = r#"puts "class User < Object" if a < b"#.find("a < b").unwrap() + 2;
+    assert_eq!(
+        only.start, real_lt_pos,
+        "The mutated '<' must be at the real operator's byte offset, not the one inside the string"
+    );
     std::fs::remove_file(&path).ok();
 }
 
@@ -293,16 +318,115 @@ fn test_hash_inside_string_is_not_treated_as_comment_start() {
 #[test]
 fn test_ge_and_le_operators_are_matched_as_pairs() {
     let (path, items) = mutations_for("a >= b && c <= d", "ge_le");
-    let contents: Vec<&String> = items.iter().map(|m| &m.content).collect();
-    assert!(
-        contents.iter().any(|c| c.as_str() == ">="),
-        "Expected '>=' as a single token; got: {:?}",
-        items
+    let op_mutations: Vec<&file::MutableItem> = items
+        .iter()
+        .filter(|m| ["<", ">", ">=", "<=", "==", "!="].contains(&m.content.as_str()))
+        .collect();
+    let contents: Vec<&str> = op_mutations.iter().map(|m| m.content.as_str()).collect();
+    assert_eq!(
+        contents,
+        vec![">=", "<="],
+        "Exactly two operator mutations expected — the >= and <= pairs, not their constituent < or > characters; got: {:?}",
+        op_mutations
     );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_triple_equals_is_not_mutated() {
+    let (path, items) = mutations_for("case x; when String === y then 1 end", "triple_eq");
+    let eq_mutations: Vec<&file::MutableItem> = items
+        .iter()
+        .filter(|m| m.content == "==" || m.content == "!=" || m.content == "===")
+        .collect();
     assert!(
-        contents.iter().any(|c| c.as_str() == "<="),
-        "Expected '<=' as a single token; got: {:?}",
-        items
+        eq_mutations.is_empty(),
+        "'===' must not produce '==' or other equality mutations; got: {:?}",
+        eq_mutations
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_bang_double_equals_is_not_mutated_as_neq() {
+    let (path, items) = mutations_for("if x !== y then 1 end", "bang_eq_eq");
+    let eq_mutations: Vec<&file::MutableItem> = items
+        .iter()
+        .filter(|m| m.content == "==" || m.content == "!=")
+        .collect();
+    assert!(
+        eq_mutations.is_empty(),
+        "'!==' must not produce '!=' or '==' mutations; got: {:?}",
+        eq_mutations
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_spaceship_is_not_mutated() {
+    let (path, items) = mutations_for("a <=> b", "spaceship");
+    let op_mutations: Vec<&file::MutableItem> = items
+        .iter()
+        .filter(|m| ["<", ">", "<=", ">="].contains(&m.content.as_str()))
+        .collect();
+    assert!(
+        op_mutations.is_empty(),
+        "'<=>' must not produce any operator mutations; got: {:?}",
+        op_mutations
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_arrow_in_hash_rocket_does_not_produce_gt_mutation() {
+    let (path, items) = mutations_for("{ :a => 1 }", "arrow");
+    let gt_mutations: Vec<&file::MutableItem> = items.iter().filter(|m| m.content == ">").collect();
+    assert!(
+        gt_mutations.is_empty(),
+        "'=>' must not produce a '>' mutation; got: {:?}",
+        gt_mutations
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_lambda_arrow_does_not_produce_gt_mutation() {
+    let (path, items) = mutations_for("doubler = ->(x) { x * 2 }", "lambda_arrow");
+    let gt_mutations: Vec<&file::MutableItem> = items.iter().filter(|m| m.content == ">").collect();
+    assert!(
+        gt_mutations.is_empty(),
+        "'->' (stabby lambda) must not produce a '>' mutation; got: {:?}",
+        gt_mutations
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_right_shift_does_not_produce_gt_mutations() {
+    let (path, items) = mutations_for("y = x >> 2", "right_shift");
+    let op_mutations: Vec<&file::MutableItem> = items
+        .iter()
+        .filter(|m| ["<", ">", ">=", "<="].contains(&m.content.as_str()))
+        .collect();
+    assert!(
+        op_mutations.is_empty(),
+        "'>>' must not produce any '>' or '>=' operator mutations; got: {:?}",
+        op_mutations
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn test_right_shift_assign_does_not_produce_gt_mutations() {
+    let (path, items) = mutations_for("x >>= 4", "right_shift_assign");
+    let op_mutations: Vec<&file::MutableItem> = items
+        .iter()
+        .filter(|m| ["<", ">", ">=", "<="].contains(&m.content.as_str()))
+        .collect();
+    assert!(
+        op_mutations.is_empty(),
+        "'>>=' must not produce any operator mutations; got: {:?}",
+        op_mutations
     );
     std::fs::remove_file(&path).ok();
 }

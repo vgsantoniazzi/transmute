@@ -115,10 +115,95 @@ fn test_writes_json_with_failure_count_to_custom_output_path(
     );
 
     let content = std::fs::read_to_string(&output_path).unwrap();
-    assert!(
-        content.contains(r#""failures""#),
-        "JSON output should include the failures count; got: {}",
+    let json: serde_json::Value =
+        serde_json::from_str(&content).expect("output must be valid JSON");
+    assert_eq!(
+        json["failures"], 1,
+        "Exactly one surviving mutation expected (uncovered '42' on line 1); JSON: {}",
         content
+    );
+    assert!(
+        json["analytics"]["mutations"].is_array(),
+        "analytics.mutations must be present as an array; JSON: {}",
+        content
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+    Ok(())
+}
+
+#[test]
+fn test_all_infra_runs_emit_inconclusive_warning() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = scratch_dir("infra_only");
+    let rb_path = dir.join("scratch.rb");
+    std::fs::write(&rb_path, "puts 42\n").unwrap();
+    let cov_path = dir.join("cov.json");
+    write_coverage_for(&rb_path, 1, &cov_path);
+    let output_path = dir.join("result.json");
+
+    let output = Command::cargo_bin("transmute")?
+        .arg("--coverage")
+        .arg(&cov_path)
+        .arg("--files")
+        .arg(&rb_path)
+        .arg("--command")
+        .arg("sh -c 'exit 127'")
+        .arg("--output")
+        .arg(&output_path)
+        .arg("--log-level")
+        .arg("warn")
+        .output()?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Report is inconclusive"),
+        "Infra-only run must surface inconclusive warning; stderr: {}",
+        stderr
+    );
+
+    let content = std::fs::read_to_string(&output_path).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&content)?;
+    assert_eq!(
+        json["failures"], 0,
+        "Infra-only outcomes must not be counted as survivors; JSON: {}",
+        content
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+    Ok(())
+}
+
+#[test]
+fn test_unknown_formatter_exits_with_code_2() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = scratch_dir("bad_formatter");
+    let rb_path = dir.join("scratch.rb");
+    std::fs::write(&rb_path, "puts 42\n").unwrap();
+    let cov_path = dir.join("cov.json");
+    std::fs::write(&cov_path, "{}").unwrap();
+
+    let output = Command::cargo_bin("transmute")?
+        .arg("--coverage")
+        .arg(&cov_path)
+        .arg("--files")
+        .arg(&rb_path)
+        .arg("--command")
+        .arg("sh -c true")
+        .arg("--formatter")
+        .arg("pdf")
+        .arg("--log-level")
+        .arg("warn")
+        .output()?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "Unknown --formatter must exit with code 2 (argparse infra)"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown --formatter"),
+        "Error must name the unknown formatter; stderr: {}",
+        stderr
     );
 
     std::fs::remove_dir_all(&dir).ok();
@@ -220,9 +305,10 @@ fn test_malformed_coverage_json_exits_cleanly() -> Result<(), Box<dyn std::error
         .output()?;
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        !output.status.success(),
-        "Should exit non-zero; status: {:?}",
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "Malformed coverage JSON must exit with code 2 (argparse infra); status: {:?}",
         output.status
     );
     assert!(
@@ -231,8 +317,8 @@ fn test_malformed_coverage_json_exits_cleanly() -> Result<(), Box<dyn std::error
         stderr
     );
     assert!(
-        stderr.to_lowercase().contains("coverage"),
-        "Error message should mention coverage; stderr: {}",
+        stderr.contains("unable to parse coverage JSON"),
+        "Error message must explain the parse failure; stderr: {}",
         stderr
     );
 

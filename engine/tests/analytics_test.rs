@@ -13,12 +13,6 @@ fn item(start: usize, replace: &str) -> file::MutableItem {
 }
 
 #[test]
-fn test_failures_callable_via_immutable_binding() {
-    let r = analytics::AnalyticsResult::start(0);
-    let _: usize = r.failures();
-}
-
-#[test]
 fn test_failures_does_not_merge_distinct_mutations_with_colliding_replace() {
     let mut r = analytics::AnalyticsResult::start(1);
     let a = file::MutableItem {
@@ -46,6 +40,18 @@ fn test_failures_does_not_merge_distinct_mutations_with_colliding_replace() {
         1,
         "Distinct mutations with the same random replace must not merge"
     );
+
+    let survivors: Vec<u32> = r
+        .mutations
+        .iter()
+        .filter(|m| m.exit_code == 0)
+        .map(|m| m.item.line_number)
+        .collect();
+    assert_eq!(
+        survivors,
+        vec![1],
+        "Only the line-1 mutation should be recorded as surviving (exit_code 0)"
+    );
 }
 
 #[test]
@@ -63,5 +69,35 @@ fn test_failures_counts_groups_where_all_specs_passed() {
         r.failures(),
         1,
         "Only the all-passed group should count as a surviving mutation"
+    );
+}
+
+#[test]
+fn test_infra_only_run_is_not_counted_as_survivor() {
+    let mut r = analytics::AnalyticsResult::start(1);
+    let only_infra = item(0, "z");
+
+    r.add("file.rb", &only_infra, 127, "spawn fail".to_string());
+    r.add("file.rb", &only_infra, 124, "timeout".to_string());
+
+    assert_eq!(
+        r.failures(),
+        0,
+        "A mutation that only ever saw infra exit codes must be inconclusive, not a survivor"
+    );
+}
+
+#[test]
+fn test_mixed_infra_and_real_run_counts_only_when_real_run_passes() {
+    let mut r = analytics::AnalyticsResult::start(1);
+    let m = item(0, "z");
+
+    r.add("file.rb", &m, 127, "spawn fail".to_string());
+    r.add("file.rb", &m, 0, "real pass".to_string());
+
+    assert_eq!(
+        r.failures(),
+        1,
+        "Once a real run is observed and it passes, the mutation is a survivor"
     );
 }
