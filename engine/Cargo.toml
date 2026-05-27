@@ -18,6 +18,7 @@ random-string = "1.0"
 rand = "0.8"
 tera = "1"
 ctrlc = "3"
+shlex = "1"
 
 [dev-dependencies]
 assert_cmd = "2.0"

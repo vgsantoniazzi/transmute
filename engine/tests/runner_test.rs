@@ -47,6 +47,27 @@ fn test_run_passes_quoted_file_with_spaces_as_single_argument() {
 }
 
 #[test]
+fn test_run_does_not_execute_injected_command_in_spec_path() {
+    let canary = std::env::temp_dir().join(format!(
+        "transmute_canary_{}_{}",
+        std::process::id(),
+        "injection"
+    ));
+    let _ = std::fs::remove_file(&canary);
+
+    let payload = format!("foo; touch {}", canary.display());
+    let (_exit_code, _stdout) = runner::run("echo {file}", &payload, Duration::from_secs(5));
+
+    assert!(
+        !canary.exists(),
+        "Injected command must not run; canary should not exist at {:?}",
+        canary
+    );
+
+    let _ = std::fs::remove_file(&canary);
+}
+
+#[test]
 fn test_run_kills_command_that_exceeds_timeout() {
     let start = Instant::now();
     let (exit_code, _stdout) = runner::run("sleep 30", "", Duration::from_millis(500));

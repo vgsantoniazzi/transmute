@@ -4,16 +4,37 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
-    let built_command = str::replace(command, "{file}", spec_file);
-    trace!("Running specs: '{}'", built_command);
+    let parts = match shlex::split(command) {
+        Some(p) if !p.is_empty() => p,
+        _ => return (2, format!("transmute: cannot parse --command: {}\n", command)),
+    };
+    let argv: Vec<String> = parts
+        .into_iter()
+        .map(|p| {
+            if p == "{file}" {
+                spec_file.to_string()
+            } else {
+                p
+            }
+        })
+        .collect();
 
-    let mut child = Command::new("sh")
-        .arg("-c")
-        .arg(&built_command)
+    trace!("Running specs: {:?}", argv);
+
+    let mut child = match Command::new(&argv[0])
+        .args(&argv[1..])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("failed to spawn shell");
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                127,
+                format!("transmute: failed to spawn '{}': {}\n", argv[0], e),
+            );
+        }
+    };
 
     let start = Instant::now();
     let exit_code = loop {
@@ -23,7 +44,10 @@ pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
                 if start.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return (124, format!("transmute: timed out after {:?}\n", timeout));
+                    return (
+                        124,
+                        format!("transmute: timed out after {:?}\n", timeout),
+                    );
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
