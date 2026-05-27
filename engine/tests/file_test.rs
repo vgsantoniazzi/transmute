@@ -6,11 +6,7 @@ use std::path::PathBuf;
 
 fn scratch_path(name: &str) -> PathBuf {
     let mut path = std::env::temp_dir();
-    path.push(format!(
-        "transmute_test_{}_{}.rb",
-        std::process::id(),
-        name
-    ));
+    path.push(format!("transmute_test_{}_{}.rb", std::process::id(), name));
     path
 }
 
@@ -19,13 +15,19 @@ fn test_extract_line_number_handles_non_numeric_tail() {
     assert_eq!(file::File::extract_line_number("app/foo.rb"), 0);
     assert_eq!(file::File::extract_line_number("app/foo.rb:42"), 42);
     assert_eq!(file::File::extract_line_number("C:\\src\\foo.rb"), 0);
-    assert_eq!(file::File::extract_line_number("app/foo.rb:not_a_number"), 0);
+    assert_eq!(
+        file::File::extract_line_number("app/foo.rb:not_a_number"),
+        0
+    );
 }
 
 #[test]
 fn test_extract_glob_pattern_preserves_colons_in_path() {
     assert_eq!(file::File::extract_glob_pattern("app/foo.rb"), "app/foo.rb");
-    assert_eq!(file::File::extract_glob_pattern("app/foo.rb:42"), "app/foo.rb");
+    assert_eq!(
+        file::File::extract_glob_pattern("app/foo.rb:42"),
+        "app/foo.rb"
+    );
     assert_eq!(
         file::File::extract_glob_pattern("C:\\src\\foo.rb"),
         "C:\\src\\foo.rb"
@@ -103,7 +105,10 @@ fn test_source_file_restored_when_guard_dropped_normally() {
     {
         let _guard = file::MutationGuard::apply(scratch.to_str().unwrap(), &item);
         let mid = std::fs::read_to_string(&scratch).unwrap();
-        assert!(mid.contains("999"), "file should be mutated inside guard scope");
+        assert!(
+            mid.contains("999"),
+            "file should be mutated inside guard scope"
+        );
     }
 
     let after = std::fs::read(&scratch).unwrap();
@@ -118,7 +123,6 @@ fn test_change_content_is_atomic_when_write_target_unavailable() {
     let original = b"puts \"a\"\nputs 42\n";
     std::fs::write(&scratch, original).unwrap();
 
-    // Sabotage the atomic-write temp path so the rewrite cannot complete.
     let sabotage = format!("{}.transmute.tmp", scratch.display());
     std::fs::create_dir_all(&sabotage).unwrap();
 
@@ -135,7 +139,10 @@ fn test_change_content_is_atomic_when_write_target_unavailable() {
     let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
         item.transmute(path.to_str().unwrap());
     }));
-    assert!(result.is_err(), "transmute should panic when temp path is unavailable");
+    assert!(
+        result.is_err(),
+        "transmute should panic when temp path is unavailable"
+    );
 
     let after = std::fs::read(&scratch).unwrap();
     assert_eq!(

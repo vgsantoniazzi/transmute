@@ -23,10 +23,7 @@ pub fn run(command: &str, spec_file: &str, timeout: Duration) -> (i32, String) {
                 if start.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return (
-                        124,
-                        format!("transmute: timed out after {:?}\n", timeout),
-                    );
+                    return (124, format!("transmute: timed out after {:?}\n", timeout));
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }

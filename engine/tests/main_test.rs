@@ -4,11 +4,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn scratch_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "transmute_test_{}_{}",
-        std::process::id(),
-        name
-    ));
+    let dir = std::env::temp_dir().join(format!("transmute_test_{}_{}", std::process::id(), name));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }

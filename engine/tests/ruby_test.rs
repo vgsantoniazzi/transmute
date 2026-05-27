@@ -22,7 +22,10 @@ fn mutations_for(content: &str, name: &str) -> (PathBuf, Vec<file::MutableItem>)
 #[test]
 fn test_strings_captured_per_literal_not_greedy() {
     let (path, items) = mutations_for(r#"a("foo") + b("bar")"#, "greedy_strings");
-    let strings: Vec<_> = items.iter().filter(|m| m.content.starts_with('"')).collect();
+    let strings: Vec<_> = items
+        .iter()
+        .filter(|m| m.content.starts_with('"'))
+        .collect();
     assert_eq!(
         strings.len(),
         2,
@@ -75,12 +78,7 @@ fn test_mutation_replaces_only_target_occurrence() {
 fn test_less_than_mutated_when_class_appears_only_inside_string() {
     let (path, items) = mutations_for(r#"puts "class is X" if a < b"#, "lt_in_string");
     let lt: Vec<_> = items.iter().filter(|m| m.content == "<").collect();
-    assert_eq!(
-        lt.len(),
-        1,
-        "Expected '<' to be mutated; got: {:?}",
-        items
-    );
+    assert_eq!(lt.len(), 1, "Expected '<' to be mutated; got: {:?}", items);
     std::fs::remove_file(&path).ok();
 }
 

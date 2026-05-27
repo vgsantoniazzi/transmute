@@ -7,10 +7,12 @@ use std::path::PathBuf;
 fn write_fixture(name: &str) -> PathBuf {
     let cwd = std::env::current_dir().unwrap().display().to_string();
     let mut path = std::env::temp_dir();
-    path.push(format!("transmute_test_{}_{}.json", std::process::id(), name));
-    let content = format!(
-        r#"{{"{cwd}/tests/fixtures/app/user.rb:3": ["./spec/user_spec.rb"]}}"#
-    );
+    path.push(format!(
+        "transmute_test_{}_{}.json",
+        std::process::id(),
+        name
+    ));
+    let content = format!(r#"{{"{cwd}/tests/fixtures/app/user.rb:3": ["./spec/user_spec.rb"]}}"#);
     fs::write(&path, content).unwrap();
     path
 }

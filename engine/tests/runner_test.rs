@@ -5,7 +5,8 @@ use std::time::{Duration, Instant};
 
 #[test]
 fn test_when_binary_missing_returns_nonzero_exit_code() {
-    let (exit_code, _stdout) = runner::run("definitely-not-a-real-binary", "", Duration::from_secs(5));
+    let (exit_code, _stdout) =
+        runner::run("definitely-not-a-real-binary", "", Duration::from_secs(5));
     assert_ne!(
         exit_code, 0,
         "Missing binary should propagate as non-zero exit, not panic"
