@@ -1,7 +1,7 @@
 pub mod schema;
 
 use log::{error, info, trace, warn};
-use rusqlite::{params, Connection, OpenFlags};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -14,6 +14,7 @@ pub struct CoverageMatch {
 
 pub struct Coverage {
     conn: Connection,
+    coverage_cwd: Option<String>,
 }
 
 impl Coverage {
@@ -47,16 +48,29 @@ impl Coverage {
             )
         })?;
 
-        let cov = Coverage { conn };
-        cov.warn_if_coverage_table_is_empty();
-        cov.warn_if_no_coverage_files_match_cwd();
+        let coverage_cwd: Option<String> = conn
+            .query_row(
+                "SELECT value FROM schema_meta WHERE key = 'cwd'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .ok()
+            .flatten();
+
+        let cov = Coverage { conn, coverage_cwd };
+        cov.warn_about_data_health();
         Ok(cov)
     }
 
-    pub fn find(&self, file: &str, line: u32, max_specs: usize) -> CoverageMatch {
-        let key = canonical_key(file);
+    pub fn coverage_cwd(&self) -> Option<&str> {
+        self.coverage_cwd.as_deref()
+    }
+
+    pub fn find(&self, file: &str, line: u32, max_specs: Option<usize>) -> CoverageMatch {
+        let key = self.canonical_key(file);
         trace!(
-            "loading specs for {}:{} (max_specs={})",
+            "loading specs for {}:{} (max_specs={:?})",
             key,
             line,
             max_specs
@@ -76,23 +90,24 @@ impl Coverage {
             }
         };
 
-        covering.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.2.cmp(&b.2)));
+        covering.sort_by_cached_key(|(_, lines, path)| {
+            (
+                proximity_rank(path, file),
+                std::cmp::Reverse(*lines),
+                path.clone(),
+            )
+        });
 
         let total = covering.len();
-        let limit = if max_specs == 0 {
-            usize::MAX
-        } else {
-            max_specs
-        };
         let specs: Vec<String> = covering
             .into_iter()
-            .take(limit)
+            .take(max_specs.unwrap_or(usize::MAX))
             .map(|(_, _, p)| p)
             .collect();
 
         if specs.len() < total {
             trace!(
-                "filtered {}:{} specs from {} to {} (max_specs={})",
+                "filtered {}:{} specs from {} to {} (max_specs={:?})",
                 key,
                 line,
                 total,
@@ -102,6 +117,28 @@ impl Coverage {
         }
 
         CoverageMatch { specs, total }
+    }
+
+    fn canonical_key(&self, file: &str) -> String {
+        let normalized: std::path::PathBuf = Path::new(file)
+            .components()
+            .filter(|c| !matches!(c, std::path::Component::CurDir))
+            .collect();
+        let absolute = if normalized.is_absolute() {
+            normalized.display().to_string()
+        } else {
+            format!("{}/{}", runtime_cwd(), normalized.display())
+        };
+
+        let stored = match self.coverage_cwd.as_deref() {
+            Some(s) if s != runtime_cwd() => s,
+            _ => return absolute,
+        };
+        let runtime_prefix = format!("{}/", runtime_cwd());
+        match absolute.strip_prefix(&runtime_prefix) {
+            Some(rest) => format!("{}/{}", stored, rest),
+            None => absolute,
+        }
     }
 
     fn query_covering_with_local_score(
@@ -129,79 +166,110 @@ impl Coverage {
         rows.collect()
     }
 
-    fn warn_if_coverage_table_is_empty(&self) {
-        let count: i64 = self
+    fn warn_about_data_health(&self) {
+        let prefix_root = self
+            .coverage_cwd
+            .as_deref()
+            .unwrap_or_else(|| runtime_cwd());
+        let pattern = format!("{}/%", prefix_root);
+        let (row_count, any_cwd_match): (i64, i64) = self
             .conn
-            .query_row("SELECT COUNT(*) FROM coverage", [], |row| row.get(0))
-            .unwrap_or(0);
-        if count == 0 {
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM coverage),
+                        EXISTS (SELECT 1 FROM files WHERE path LIKE ?1)",
+                params![pattern],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap_or((0, 0));
+        if row_count == 0 {
             warn!(
                 "Coverage database has zero rows. Every mutation will be reported as surviving with no covering spec; the report will be uninformative. Re-generate coverage from your test suite."
             );
         }
-    }
-
-    fn warn_if_no_coverage_files_match_cwd(&self) {
-        let prefix = format!("{}/%", cwd());
-        let any: i64 = self
-            .conn
-            .query_row(
-                "SELECT EXISTS (SELECT 1 FROM files WHERE path LIKE ?1)",
-                params![prefix],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
-        if any == 0 {
+        if any_cwd_match == 0 {
             warn!(
-                "No coverage files match cwd '{}'. Re-run coverage from the same directory transmute runs from, or the lookup will always return empty.",
-                cwd()
+                "No coverage files match '{}'. Re-run coverage from the same directory transmute runs from, or the lookup will always return empty.",
+                prefix_root
             );
         }
     }
 }
 
+const SOURCE_ROOTS: &[&str] = &["app", "lib", "src"];
+const TEST_ROOTS: &[&str] = &["spec", "tests", "test", "__tests__"];
+const TEST_SUFFIX_MARKERS: &[&str] = &["_spec", "_test", ".spec", ".test", "-spec", "-test"];
+const TEST_PREFIX_MARKERS: &[&str] = &["test_", "spec_", "test.", "spec.", "test-", "spec-"];
+
+pub fn proximity_rank(spec_path: &str, source_path: &str) -> u8 {
+    let (source_stem, source_dir) = normalized_parts(source_path, SOURCE_ROOTS);
+    let (spec_stem, spec_dir) = normalized_parts(spec_path, TEST_ROOTS);
+    let spec_stem_unmarked = strip_test_markers(&spec_stem);
+
+    let name_match = !source_stem.is_empty() && source_stem == spec_stem_unmarked;
+    let dir_match = source_dir == spec_dir;
+
+    match (name_match, dir_match) {
+        (true, true) => 0,
+        (true, false) => 1,
+        (false, true) => 2,
+        (false, false) => 3,
+    }
+}
+
+fn normalized_parts(file_path: &str, roots: &[&str]) -> (String, Vec<String>) {
+    let path = Path::new(file_path);
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    let parent_components: Vec<String> = path
+        .parent()
+        .map(|p| {
+            p.components()
+                .filter_map(|c| match c {
+                    std::path::Component::Normal(s) => s.to_str().map(String::from),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let strip_at = parent_components
+        .iter()
+        .position(|c| roots.contains(&c.as_str()));
+    let remaining = match strip_at {
+        Some(i) => parent_components[i + 1..].to_vec(),
+        None => parent_components,
+    };
+    (stem, remaining)
+}
+
+fn strip_test_markers(stem: &str) -> String {
+    let lowered = stem.to_lowercase();
+    for suffix in TEST_SUFFIX_MARKERS {
+        if lowered.ends_with(suffix) && lowered.len() > suffix.len() {
+            return stem[..stem.len() - suffix.len()].to_string();
+        }
+    }
+    for prefix in TEST_PREFIX_MARKERS {
+        if lowered.starts_with(prefix) && lowered.len() > prefix.len() {
+            return stem[prefix.len()..].to_string();
+        }
+    }
+    stem.to_string()
+}
+
 fn looks_like_json_coverage(file_path: &str) -> bool {
     use std::io::Read;
-
-    let mut file = match std::fs::File::open(file_path) {
-        Ok(f) => f,
-        Err(_) => return false,
-    };
-
-    let mut header = [0u8; 16];
-    let read = match file.read(&mut header) {
-        Ok(n) => n,
-        Err(_) => return false,
-    };
-
-    if read >= 16 && &header == b"SQLite format 3\0" {
-        return false;
-    }
-
-    if read >= 1 && matches!(header[0], b'{' | b'[') {
-        return true;
-    }
-
-    Path::new(file_path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.eq_ignore_ascii_case("json"))
+    let mut header = [0u8; 1];
+    std::fs::File::open(file_path)
+        .and_then(|mut f| f.read(&mut header))
+        .map(|n| n >= 1 && matches!(header[0], b'{' | b'['))
         .unwrap_or(false)
 }
 
-fn canonical_key(file: &str) -> String {
-    let normalized: std::path::PathBuf = Path::new(file)
-        .components()
-        .filter(|c| !matches!(c, std::path::Component::CurDir))
-        .collect();
-    if normalized.is_absolute() {
-        normalized.display().to_string()
-    } else {
-        format!("{}/{}", cwd(), normalized.display())
-    }
-}
-
-fn cwd() -> &'static str {
+fn runtime_cwd() -> &'static str {
     CWD.get_or_init(|| {
         std::env::current_dir()
             .ok()
