@@ -36,12 +36,15 @@ fn resolved_output<'a>(requested: &'a str, default: &'a str) -> &'a str {
 fn generate_html(analytics: &mut AnalyticsResult, output_path: &str) {
     let template = include_str!("index.html");
     let mut tera = Tera::default();
-    tera.add_raw_template("index.html", template).unwrap();
+    tera.add_raw_template("index.html", template)
+        .expect("bundled HTML template must compile");
 
     let mut context = Context::new();
     context.insert("analytics", &*analytics);
     context.insert("failures", &analytics.failures());
-    let content = tera.render("index.html", &context).unwrap();
+    let content = tera
+        .render("index.html", &context)
+        .expect("HTML template must render with the analytics model");
     fs::write(output_path, content).expect("Unable to write file");
 }
 
@@ -50,6 +53,7 @@ fn generate_json(analytics: &mut AnalyticsResult, output_path: &str) {
         failures: analytics.failures(),
         analytics,
     };
-    let content = serde_json::to_string_pretty(&report).unwrap();
+    let content = serde_json::to_string_pretty(&report)
+        .expect("AnalyticsResult must be serializable to JSON");
     fs::write(output_path, content).expect("Unable to write file");
 }

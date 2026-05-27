@@ -85,6 +85,10 @@ fn random_other_operator(current: &str, charset: &[&str]) -> String {
         .to_string()
 }
 
+// Detects double- and single-quoted Ruby string literals only.
+// Does NOT detect: %w[]/%W[] arrays, %q{}/%Q{} forms, <<~/<<- heredocs,
+// or interpolation spans inside "#{...}". Mutating those forms reliably
+// would need a real Ruby tokenizer.
 fn find_strings(string: &str) -> Vec<(String, usize)> {
     let double = Regex::new(r#""(?:[^"\\]|\\.)*""#).unwrap();
     let single = Regex::new(r#"'(?:[^'\\]|\\.)*'"#).unwrap();
