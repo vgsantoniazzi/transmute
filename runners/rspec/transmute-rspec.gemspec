@@ -24,5 +24,7 @@ Gem::Specification.new do |spec|
   spec.executables = %w[transmute-rspec transmute-rspec-run]
   spec.require_paths = ['lib']
 
-  spec.add_runtime_dependency 'rspec-core', '>= 3.0'
+  spec.add_runtime_dependency 'rspec-core', '~> 3.0'
+
+  spec.add_development_dependency 'rspec', '~> 3.0'
 end

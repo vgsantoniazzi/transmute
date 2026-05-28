@@ -26,17 +26,19 @@ end
 
 ```sh
 bundle exec transmute-rspec serve \
-  --listen tcp://0.0.0.0:9876 \
+  --listen tcp://127.0.0.1:9876 \
   --require ./config/environment
 ```
 
 The `--require` flag preloads Rails (or any other framework) so the first spec invocation doesn't pay boot cost.
 
-You can also listen on a Unix socket:
+You can also listen on a Unix socket (more secure on multi-tenant hosts):
 
 ```sh
 bundle exec transmute-rspec serve --listen /tmp/transmute-rspec.sock --require ./config/environment
 ```
+
+**Security note**: the daemon executes `Kernel.load(spec_path)` on any path a client sends, so it must not be exposed to untrusted callers. By default it refuses to bind to anything other than loopback (`127.0.0.1`, `::1`, `localhost`). The spec path is also constrained to fall under the daemon's working directory. If you need to bind a non-loopback address (e.g. inside a single-tenant container), pass `--allow-public`.
 
 **2. Point transmute's `--command` at the client**:
 
@@ -44,13 +46,13 @@ bundle exec transmute-rspec serve --listen /tmp/transmute-rspec.sock --require .
 transmute \
   --files "app/**/*.rb" \
   --coverage transmute.sqlite \
-  --command "TRANSMUTE_RSPEC_SOCKET=tcp://localhost:9876 bundle exec transmute-rspec-run {file}" \
+  --command "TRANSMUTE_RSPEC_SOCKET=tcp://127.0.0.1:9876 bundle exec transmute-rspec-run {file}" \
   --max-specs-per-mutation 3
 ```
 
 The `transmute-rspec-run` client connects to the daemon, sends the spec path, forwards the response stdout, and propagates the exit code. To transmute it looks like any other `--command`.
 
-**3. Kill the daemon** when done (Ctrl-C, or `kill <pid>`).
+**3. Stop the daemon** when done — `Ctrl-C`, `kill <pid>`, or send `{"action":"quit"}` over the socket. The daemon prints its PID in the startup banner.
 
 ## How it works
 
@@ -108,13 +110,25 @@ Pick by what matters:
 - **Fast first pass** to triage missing tests → default (in-process). Promote any survivor with a cold re-run for confirmation.
 - **Authoritative results in one pass** → `--fork`. Slower per spec, the report you get is trustworthy as-is.
 
-## Caveats
+**In-process mode requires Rails** — without it, the daemon refuses to start because `Kernel.load` + class re-open semantics produce silently wrong mutation reports in plain Ruby. Pass `--allow-plain-ruby` to override (not recommended; use `--fork` instead). Fork mode works for plain Ruby without the flag.
 
-- **State pollution in default mode**. Documented above. Use `--fork` if it matters.
-- **Single writer**. One daemon per project. The daemon serves requests sequentially; concurrent clients will queue.
-- **Memory growth**. Long-running Ruby processes leak; restart the daemon every few hundred requests.
-- **`--jobs` parallel mode is not yet supported**. Each transmute worker would need its own daemon. Use serial mode (`--jobs 1`, the default) with the sidecar for now.
-- **TCP listener has no authentication**. Use `tcp://127.0.0.1:PORT` to bind to localhost only, or use Unix sockets.
+## Operational notes
+
+- **Single writer**. One daemon per project. The daemon serves requests sequentially; concurrent clients queue.
+- **Restart periodically**. Long-running Ruby processes leak; `{"action":"stats"}` reports `requests_handled` so you can rotate after a few hundred specs.
+- **Survives bad clients**. A client that disconnects mid-response logs a warning and the daemon keeps accepting. Verified by integration test.
+- **Signal handling**. SIGINT and SIGTERM set a clean shutdown flag and break the accept loop within ~250ms.
+- **`{"action":"quit"}`** shuts down cleanly without sending a signal.
+- **`--jobs` parallel mode unsupported**. Each transmute worker would need its own daemon. Use serial mode (`--jobs 1`, the default) with the sidecar for now.
+
+## Security model
+
+The daemon executes `Kernel.load(spec_path)` on any path a client sends — it is **not** safe to expose to untrusted callers. Default posture:
+
+- TCP binds refused unless host is loopback (`127.0.0.1`, `::1`, `localhost`). Override with `--allow-public` (use only in single-tenant containers).
+- Unix sockets created with `0600` (owner-only) regardless of process umask.
+- Spec paths are constrained to fall under the daemon's working directory; `../` traversals are refused.
+- `--allow-plain-ruby` lets you bypass the Rails-only refusal for in-process mode if you understand the correctness limitation.
 
 ## Why a separate gem
 

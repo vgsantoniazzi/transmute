@@ -4,13 +4,21 @@
 require 'optparse'
 require 'transmute/rspec'
 
-opts = { socket: Transmute::Rspec::Server::DEFAULT_SOCKET, require: [], fork: false }
+opts = {
+  socket: Transmute::Rspec::Server::DEFAULT_SOCKET,
+  require: [],
+  fork: false,
+  allow_public: false,
+  allow_plain_ruby: false
+}
 
 parser = OptionParser.new do |o|
   o.banner = 'Usage: transmute-rspec serve [options]'
   o.on('--listen PATH', "Unix socket path or tcp://host:port (default: #{opts[:socket]})") { |v| opts[:socket] = v }
   o.on('--require PATH', 'Require a file at boot (repeat for multiple)') { |v| opts[:require] << v }
-  o.on('--fork', 'Fork per request: each spec runs in a fresh child process so class-level state cannot leak between specs. Eliminates the in-process state-pollution kill-rate gap; adds a few ms of fork overhead per request.') { opts[:fork] = true }
+  o.on('--fork', 'Fork per request: each spec runs in a fresh child process so class-level state cannot leak between specs. Eliminates the in-process state-pollution kill-rate gap; adds a few hundred ms of fork overhead per request.') { opts[:fork] = true }
+  o.on('--allow-public', 'Allow binding to a non-loopback TCP address. The daemon executes Kernel.load on any path a client sends; only enable this in trusted single-tenant environments.') { opts[:allow_public] = true }
+  o.on('--allow-plain-ruby', 'Allow in-process mode without Rails. Has known correctness gaps (class re-open accumulates methods, $LOADED_FEATURES not updated by Kernel.load). Use --fork instead unless you know why this matters.') { opts[:allow_plain_ruby] = true }
   o.on('-h', '--help', 'Show this help') do
     puts o
     exit
@@ -23,7 +31,14 @@ parser.parse!(ARGV)
 case cmd
 when 'serve', nil
   opts[:require].each { |path| require path }
-  Transmute::Rspec::Server.new(socket_path: opts[:socket], fork: opts[:fork]).serve
+  Transmute::Rspec::Server.new(
+    socket_path: opts[:socket],
+    fork: opts[:fork],
+    allow_public: opts[:allow_public],
+    allow_plain_ruby: opts[:allow_plain_ruby]
+  ).serve
+  # Skip at_exit handlers (rspec-core may have hooks that try to run a default suite).
+  Kernel.exit!(0)
 else
   warn "transmute-rspec: unknown command '#{cmd}'"
   warn parser.help

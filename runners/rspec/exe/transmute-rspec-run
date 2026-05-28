@@ -4,6 +4,9 @@
 require 'json'
 require 'socket'
 
+# DEFAULT_SOCKET is intentionally duplicated from server.rb so this client
+# binary depends only on Ruby stdlib (no `require 'transmute/rspec'`, no
+# rspec-core transitive load). Keep in sync if the server default changes.
 DEFAULT_SOCKET = '/tmp/transmute-rspec.sock'
 
 socket_path = ENV['TRANSMUTE_RSPEC_SOCKET'] || DEFAULT_SOCKET
@@ -32,11 +35,20 @@ begin
       exit 2
     end
 
-    response = JSON.parse(line)
+    begin
+      response = JSON.parse(line)
+    rescue JSON::ParserError => e
+      warn "transmute-rspec-run: daemon response was not valid JSON: #{e.message}"
+      exit 2
+    end
+
     $stdout.write(response['stdout'].to_s)
     exit Integer(response['exit_code'] || 2)
   end
 rescue Errno::ENOENT, Errno::ECONNREFUSED
   warn "transmute-rspec-run: daemon not reachable at #{socket_path}; start it with 'bundle exec transmute-rspec serve'"
+  exit 2
+rescue Errno::ECONNRESET, Errno::EPIPE => e
+  warn "transmute-rspec-run: daemon at #{socket_path} died mid-response (#{e.class}); engine will treat as infra error, not killed mutation"
   exit 2
 end

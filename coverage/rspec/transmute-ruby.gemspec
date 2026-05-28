@@ -12,7 +12,7 @@ Gem::Specification.new do |spec|
   spec.description   = 'Ruby gem to help you to generate the reverse-coverage relationship between code and tests. The output is a `transmute.sqlite` database that maps every source line to the specs that touch it, used by the transmute engine for targeted mutation testing.'
   spec.homepage      = 'https://github.com/vgsantoniazzi/transmute'
   spec.license       = 'GPL-3.0'
-  spec.required_ruby_version = Gem::Requirement.new('>= 2.4.0')
+  spec.required_ruby_version = Gem::Requirement.new('>= 2.5.0')
 
   spec.metadata['homepage_uri'] = spec.homepage
   spec.metadata['source_code_uri'] = 'https://github.com/vgsantoniazzi/transmute'
