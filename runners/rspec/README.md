@@ -89,13 +89,13 @@ Response:
 {"exit_code":0,"stdout":"...rspec output..."}
 ```
 
-Other actions: `ping`, `quit`.
+Other actions: `ping`, `stats`, `quit`.
 
 ## Two modes: in-process (default) vs fork
 
 ```sh
-bundle exec transmute-rspec serve --listen tcp://0.0.0.0:9876 --require ./config/environment       # in-process
-bundle exec transmute-rspec serve --listen tcp://0.0.0.0:9876 --require ./config/environment --fork  # fork-per-request
+bundle exec transmute-rspec serve --listen tcp://127.0.0.1:9876 --require ./config/environment       # in-process
+bundle exec transmute-rspec serve --listen tcp://127.0.0.1:9876 --require ./config/environment --fork  # fork-per-request
 ```
 
 | | wall per spec (Rails 8) | kill-rate parity vs cold rspec |

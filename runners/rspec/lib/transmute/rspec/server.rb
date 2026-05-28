@@ -26,6 +26,7 @@ module Transmute
       def serve
         guard_against_plain_ruby_in_process_mode
 
+        server = nil
         server = build_server(@socket_path)
         install_signal_handlers
         log_startup_banner
@@ -55,7 +56,7 @@ module Transmute
 
       def build_server(path)
         if path.start_with?('tcp://')
-          host, port = parse_tcp(path)
+          host, port = self.class.parse_tcp(path)
           guard_against_public_bind(host)
           TCPServer.new(host, port)
         else
@@ -73,10 +74,6 @@ module Transmute
         body = uri.sub(%r{^tcp://}, '')
         host, port = body.split(':')
         [host, Integer(port)]
-      end
-
-      def parse_tcp(uri)
-        self.class.parse_tcp(uri)
       end
 
       def handle(client)
