@@ -10,15 +10,16 @@ module Transmute
     class Server
       DEFAULT_SOCKET = '/tmp/transmute-rspec.sock'
 
-      def initialize(socket_path: DEFAULT_SOCKET, logger: $stderr)
+      def initialize(socket_path: DEFAULT_SOCKET, logger: $stderr, fork: false)
         @socket_path = socket_path
         @logger = logger
         @file_mtimes = {}
+        @fork = fork
       end
 
       def serve
         server = build_server(@socket_path)
-        @logger.puts "transmute-rspec: listening on #{@socket_path}"
+        @logger.puts "transmute-rspec: listening on #{@socket_path}#{@fork ? ' (fork-per-request)' : ''}"
         @logger.puts "transmute-rspec: rspec #{::RSpec::Core::Version::STRING} ready"
 
         loop do
@@ -80,6 +81,15 @@ module Transmute
         return missing_spec_response(spec_path) unless File.exist?(spec_path)
 
         ensure_spec_root_on_load_path(spec_path)
+
+        if @fork
+          run_spec_in_fork(spec_path)
+        else
+          run_spec_in_process(spec_path)
+        end
+      end
+
+      def run_spec_in_process(spec_path)
         reload_application_code
 
         captured = StringIO.new
@@ -90,6 +100,62 @@ module Transmute
         exit_code = ::RSpec::Core::Runner.run([], captured, captured)
 
         { exit_code: exit_code, stdout: captured.string }
+      end
+
+      def run_spec_in_fork(spec_path)
+        reader, writer = IO.pipe
+        pid = Process.fork do
+          reader.close
+          begin
+            response = run_spec_in_fork_child(spec_path)
+            writer.write(JSON.generate(response))
+          rescue StandardError, ScriptError => e
+            writer.write(JSON.generate(error_response(e)))
+          ensure
+            writer.close
+            Process.exit!(0)
+          end
+        end
+        writer.close
+        raw = reader.read
+        reader.close
+        _, status = Process.wait2(pid)
+        if raw.nil? || raw.empty?
+          return {
+            exit_code: 2,
+            stdout: "transmute-rspec: forked worker died (#{status.exitstatus ? "exit #{status.exitstatus}" : "signal #{status.termsig}"})\n"
+          }
+        end
+
+        JSON.parse(raw)
+      end
+
+      def run_spec_in_fork_child(spec_path)
+        reset_database_connections
+        reload_application_code
+
+        captured = StringIO.new
+        ::RSpec.clear_examples
+        ::RSpec.configuration.output_stream = captured
+        ::RSpec.configuration.error_stream = captured
+        Kernel.load(spec_path)
+        exit_code = ::RSpec::Core::Runner.run([], captured, captured)
+        { exit_code: exit_code, stdout: captured.string }
+      end
+
+      def reset_database_connections
+        return unless defined?(::ActiveRecord::Base)
+
+        begin
+          ::ActiveRecord::Base.connection_handler.clear_all_connections!
+        rescue StandardError
+          nil
+        end
+        begin
+          ::ActiveRecord::Base.establish_connection
+        rescue StandardError
+          nil
+        end
       end
 
       def missing_spec_response(spec_path)

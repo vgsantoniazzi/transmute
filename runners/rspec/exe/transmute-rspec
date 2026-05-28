@@ -4,12 +4,13 @@
 require 'optparse'
 require 'transmute/rspec'
 
-opts = { socket: Transmute::Rspec::Server::DEFAULT_SOCKET, require: [] }
+opts = { socket: Transmute::Rspec::Server::DEFAULT_SOCKET, require: [], fork: false }
 
 parser = OptionParser.new do |o|
   o.banner = 'Usage: transmute-rspec serve [options]'
-  o.on('--listen PATH', "Unix socket path (default: #{opts[:socket]})") { |v| opts[:socket] = v }
+  o.on('--listen PATH', "Unix socket path or tcp://host:port (default: #{opts[:socket]})") { |v| opts[:socket] = v }
   o.on('--require PATH', 'Require a file at boot (repeat for multiple)') { |v| opts[:require] << v }
+  o.on('--fork', 'Fork per request: each spec runs in a fresh child process so class-level state cannot leak between specs. Eliminates the in-process state-pollution kill-rate gap; adds a few ms of fork overhead per request.') { opts[:fork] = true }
   o.on('-h', '--help', 'Show this help') do
     puts o
     exit
@@ -22,7 +23,7 @@ parser.parse!(ARGV)
 case cmd
 when 'serve', nil
   opts[:require].each { |path| require path }
-  Transmute::Rspec::Server.new(socket_path: opts[:socket]).serve
+  Transmute::Rspec::Server.new(socket_path: opts[:socket], fork: opts[:fork]).serve
 else
   warn "transmute-rspec: unknown command '#{cmd}'"
   warn parser.help

@@ -4,7 +4,10 @@ Persistent RSpec runner daemon for [transmute](https://github.com/vgsantoniazzi/
 
 Mutation testing shells out to your test runner once per mutation. On a Rails app, that's ~3–5 seconds of framework boot per `rspec` invocation, and it adds up fast — a benchmark on a real Rails 8 app (10 models, 151 mutations, 423 spec runs) took **16 minutes** of wall clock, almost all of it Rails boot.
 
-This gem boots Rails once and accepts spec-run requests over a socket. The same benchmark with the daemon: **6m41s, ~2.4× faster**. The catch (see Caveats below): in-process runs share Rails state across specs, so ~10% of mutations that a cold `bundle exec rspec` would kill instead survive under the daemon as low-confidence. Useful as a fast first pass; promote suspicious survivors with a cold re-run.
+This gem boots Rails once and accepts spec-run requests over a socket. Two execution modes (see "Two modes" below):
+
+- **In-process** (default): same Ruby process across all spec runs. Fastest path: **6m41s on the reference bench, ~2.4× faster than cold rspec**. Trade-off: ~13% of kills drop into a low-confidence bucket because class-level Rails state leaks between specs.
+- **Fork** (`--fork`): forks per request so each spec runs in clean state. Restores kill-rate parity with cold rspec at the cost of fork+reload overhead (~5s/spec vs ~1s in-process). Use when you need authoritative results in one pass.
 
 ## Installation
 
@@ -86,9 +89,28 @@ Response:
 
 Other actions: `ping`, `quit`.
 
+## Two modes: in-process (default) vs fork
+
+```sh
+bundle exec transmute-rspec serve --listen tcp://0.0.0.0:9876 --require ./config/environment       # in-process
+bundle exec transmute-rspec serve --listen tcp://0.0.0.0:9876 --require ./config/environment --fork  # fork-per-request
+```
+
+| | wall per spec (Rails 8) | kill-rate parity vs cold rspec |
+|---|---|---|
+| In-process (default) | ~1s warm | ~87% (drops ~13% of kills to low-confidence) |
+| Fork (`--fork`) | ~5s | ~100% (each spec runs in fresh child) |
+| Cold `bundle exec rspec` | ~7s | 100% |
+
+In-process keeps Rails warm across all specs — fast but class-level state (memoized singletons, Faraday pools, instance vars on classes) leaks between specs and masks some mutations. `--fork` calls `Process.fork` per request: child re-establishes its DB connection, reloads changed source, runs the spec, exits. Fresh state per spec, but fork+reload+DB-reconnect in Ruby/Rails costs ~3-4s on top of the actual spec.
+
+Pick by what matters:
+- **Fast first pass** to triage missing tests → default (in-process). Promote any survivor with a cold re-run for confirmation.
+- **Authoritative results in one pass** → `--fork`. Slower per spec, the report you get is trustworthy as-is.
+
 ## Caveats
 
-- **State pollution drops kill rate by ~10%**. On the reference Rails 8 bench, 15 of 112 mutations (13%) that died under a cold `bundle exec rspec` only made the "low-confidence" bucket under the daemon. The daemon reuses Rails state across requests; `use_transactional_fixtures` cleans the DB, but anything else a spec leaves behind (instance vars on singletons, Faraday connection caches, memoized class-level state) carries over. Treat sidecar results as a fast first pass — for any mutation marked `low_confidence_failures`, re-run the engine against just that file with a cold `--command "bundle exec rspec {file}"` to confirm. This is the central trade-off of the sidecar: 2× faster, but ~10% noisier.
+- **State pollution in default mode**. Documented above. Use `--fork` if it matters.
 - **Single writer**. One daemon per project. The daemon serves requests sequentially; concurrent clients will queue.
 - **Memory growth**. Long-running Ruby processes leak; restart the daemon every few hundred requests.
 - **`--jobs` parallel mode is not yet supported**. Each transmute worker would need its own daemon. Use serial mode (`--jobs 1`, the default) with the sidecar for now.
