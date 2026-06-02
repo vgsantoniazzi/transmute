@@ -24,4 +24,6 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   spec.add_runtime_dependency 'sqlite3', '~> 1.4'
+
+  spec.add_development_dependency 'rspec', '~> 3.0'
 end

@@ -46,7 +46,7 @@ end
 
 ## Test
 
-We prioritize end-to-end tests, so you'll not see spec files here. To verify everything works, run the engine's Rust integration tests in `engine/`.
+Unit specs for the recorder live in `spec/`; run them with `bundle exec rspec`. End-to-end coverage of the full pipeline lives in the engine's Rust integration tests in `engine/`.
 
 ## License
 

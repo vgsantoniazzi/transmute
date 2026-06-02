@@ -38,7 +38,7 @@ You can also listen on a Unix socket (more secure on multi-tenant hosts):
 bundle exec transmute-rspec serve --listen /tmp/transmute-rspec.sock --require ./config/environment
 ```
 
-**Security note**: the daemon executes `Kernel.load(spec_path)` on any path a client sends, so it must not be exposed to untrusted callers. By default it refuses to bind to anything other than loopback (`127.0.0.1`, `::1`, `localhost`). The spec path is also constrained to fall under the daemon's working directory. If you need to bind a non-loopback address (e.g. inside a single-tenant container), pass `--allow-public`.
+**Security note**: the daemon executes `Kernel.load(spec_path)` on any path a client sends, so it must not be exposed to untrusted callers. By default it refuses to bind anything other than loopback; pass `--allow-public` only inside a single-tenant container. See [Security model](#security-model) for the full posture.
 
 **2. Point transmute's `--command` at the client**:
 
@@ -115,8 +115,8 @@ Pick by what matters:
 ## Operational notes
 
 - **Single writer**. One daemon per project. The daemon serves requests sequentially; concurrent clients queue.
-- **Restart periodically**. Long-running Ruby processes leak; `{"action":"stats"}` reports `requests_handled` so you can rotate after a few hundred specs.
-- **Survives bad clients**. A client that disconnects mid-response logs a warning and the daemon keeps accepting. Verified by integration test.
+- **Restart periodically**. Long-running Ruby processes leak; `{"action":"stats"}` reports `requests_handled` so you can rotate after a few hundred specs. The daemon also logs a one-time restart nudge once it crosses 500 handled requests, so a forgotten daemon surfaces itself.
+- **Survives bad clients**. A client that disconnects mid-response logs a warning and the daemon keeps accepting. A client that connects but never sends a complete request line is dropped after `--read-timeout` seconds (default 10) with a `read timeout` log line — without it, one stuck client would wedge the serial loop and every queued spec behind it. A client that floods a newline-less stream is dropped once the request line passes 64 KiB (`request line exceeded`), so a buggy or hostile peer can't balloon daemon memory. Legitimate clients send a tiny one-line request immediately on connect, so both limits are comfortably generous. All cases verified by integration tests.
 - **Signal handling**. SIGINT and SIGTERM set a clean shutdown flag and break the accept loop within ~250ms.
 - **`{"action":"quit"}`** shuts down cleanly without sending a signal.
 - **`--jobs` parallel mode unsupported**. Each transmute worker would need its own daemon. Use serial mode (`--jobs 1`, the default) with the sidecar for now.
@@ -127,7 +127,7 @@ The daemon executes `Kernel.load(spec_path)` on any path a client sends — it i
 
 - TCP binds refused unless host is loopback (`127.0.0.1`, `::1`, `localhost`). Override with `--allow-public` (use only in single-tenant containers).
 - Unix sockets created with `0600` (owner-only) regardless of process umask.
-- Spec paths are constrained to fall under the daemon's working directory; `../` traversals are refused.
+- Spec paths are constrained to fall under the daemon's working directory; `../` traversals are refused, and the path is re-checked after symlink resolution (`File.realpath`) so a link under the root pointing outside cannot smuggle in external code.
 - `--allow-plain-ruby` lets you bypass the Rails-only refusal for in-process mode if you understand the correctness limitation.
 
 ## Why a separate gem

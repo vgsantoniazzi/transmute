@@ -5,6 +5,7 @@ require 'fileutils'
 require 'socket'
 require 'json'
 require 'rbconfig'
+require 'timeout'
 
 module DaemonHelpers
   GEM_ROOT = File.expand_path('..', __dir__)
@@ -51,8 +52,23 @@ module DaemonHelpers
     File.join(Dir.tmpdir, "transmute-rspec-it-#{Process.pid}-#{label}-#{Time.now.to_f}.sock")
   end
 
+  def free_tcp_port
+    server = TCPServer.new('127.0.0.1', 0)
+    port = server.addr[1]
+    server.close
+    port
+  end
+
+  # A tcp:// socket "path" is not a valid filename, so derive the log path from a
+  # sanitized copy rather than the raw URL.
+  def log_path_for(socket_path)
+    return "#{socket_path}.log" unless socket_path.start_with?('tcp://')
+
+    File.join(Dir.tmpdir, "#{socket_path.gsub(%r{[^a-zA-Z0-9]}, '-')}.log")
+  end
+
   def spawn_daemon(socket_path:, extra_args: [], cwd: Dir.pwd)
-    log_path = "#{socket_path}.log"
+    log_path = log_path_for(socket_path)
     File.delete(log_path) if File.exist?(log_path)
     args = [
       RbConfig.ruby,

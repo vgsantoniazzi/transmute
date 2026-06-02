@@ -19,8 +19,16 @@ end
 
 open_socket =
   if socket_path.start_with?('tcp://')
+    # tcp:// parsing is intentionally duplicated from Server.parse_tcp (server.rb)
+    # for the same stdlib-only reason as DEFAULT_SOCKET above. The bracketed-IPv6
+    # branch must stay in sync with that method (verified equivalent by its specs).
     host_port = socket_path.sub(%r{^tcp://}, '')
-    host, port = host_port.split(':')
+    if (match = host_port.match(/\A\[(?<host>.+)\]:(?<port>\d+)\z/))
+      host = match[:host]
+      port = match[:port]
+    else
+      host, _colon, port = host_port.rpartition(':')
+    end
     ->(&block) { TCPSocket.open(host, Integer(port), &block) }
   else
     ->(&block) { UNIXSocket.open(socket_path, &block) }

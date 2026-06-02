@@ -75,6 +75,22 @@ RSpec.describe 'transmute-rspec daemon' do
         end
       end
     end
+
+    it 'reaps each forked worker, leaving no zombie children on the daemon' do
+      with_temp_project do |project|
+        spec = write_passing_spec(project)
+        daemon = spawn_daemon(socket_path: temp_socket('fork-reap'), extra_args: ['--fork'], cwd: project)
+        begin
+          3.times { expect(request(daemon.socket, action: 'run', spec: spec)['exit_code']).to eq(0) }
+
+          children = `ps --ppid #{daemon.pid} -o stat=`.split("\n").map(&:strip)
+          zombies = children.select { |stat| stat.start_with?('Z') }
+          expect(zombies).to be_empty, "daemon left zombie children: #{children.inspect}"
+        ensure
+          daemon.stop
+        end
+      end
+    end
   end
 
   describe 'security: spec path validation' do
@@ -107,6 +123,65 @@ RSpec.describe 'transmute-rspec daemon' do
         end
       end
     end
+
+    it 'treats a run request with a missing or empty spec as not found' do
+      with_temp_project do |project|
+        daemon = spawn_daemon(socket_path: temp_socket('empty-spec'), extra_args: ['--allow-plain-ruby'], cwd: project)
+        begin
+          missing = request(daemon.socket, action: 'run')
+          empty = request(daemon.socket, action: 'run', spec: '')
+          expect(missing['exit_code']).to eq(2)
+          expect(empty['exit_code']).to eq(2)
+          expect(empty['stdout']).to include('spec file not found')
+        ensure
+          daemon.stop
+        end
+      end
+    end
+  end
+
+  describe 'cli' do
+    it 'prints help and exits 0 for --help even without a subcommand' do
+      out_path = "#{temp_socket('help')}.out"
+      pid = Process.spawn(
+        RbConfig.ruby, '-I', DaemonHelpers::LIB_PATH, DaemonHelpers::DAEMON_BIN,
+        '--help',
+        out: out_path, err: out_path
+      )
+      _, status = Process.waitpid2(pid)
+      out = File.read(out_path)
+      File.delete(out_path)
+      expect(status.exitstatus).to eq(0)
+      expect(out).to include('Usage: transmute-rspec serve')
+    end
+
+    it 'prints unknown command and exits 2 for an unrecognized subcommand' do
+      out_path = "#{temp_socket('unknown-cmd')}.out"
+      pid = Process.spawn(
+        RbConfig.ruby, '-I', DaemonHelpers::LIB_PATH, DaemonHelpers::DAEMON_BIN,
+        'bogus',
+        out: out_path, err: out_path
+      )
+      _, status = Process.waitpid2(pid)
+      out = File.read(out_path)
+      File.delete(out_path)
+      expect(status.exitstatus).to eq(2)
+      expect(out).to include("unknown command 'bogus'")
+    end
+
+    it 'refuses to start with a non-positive --read-timeout instead of dropping every client' do
+      out_path = "#{temp_socket('bad-timeout')}.out"
+      pid = Process.spawn(
+        RbConfig.ruby, '-I', DaemonHelpers::LIB_PATH, DaemonHelpers::DAEMON_BIN,
+        'serve', '--listen', temp_socket('bad-timeout'), '--read-timeout', '0', '--allow-plain-ruby',
+        out: out_path, err: out_path
+      )
+      _, status = Process.waitpid2(pid)
+      out = File.read(out_path)
+      File.delete(out_path)
+      expect(status.exitstatus).to eq(2)
+      expect(out).to include('--read-timeout must be a positive number')
+    end
   end
 
   describe 'security: TCP bind' do
@@ -122,6 +197,37 @@ RSpec.describe 'transmute-rspec daemon' do
       File.delete(log_path)
       expect(status.exitstatus).not_to eq(0)
       expect(log).to include('refusing to bind on 0.0.0.0')
+    end
+  end
+
+  describe 'TCP transport' do
+    it 'assembles a request delivered in fragmented packets and replies over TCP' do
+      with_temp_project do |project|
+        spec = write_passing_spec(project)
+        port = free_tcp_port
+        daemon = spawn_daemon(
+          socket_path: "tcp://127.0.0.1:#{port}",
+          extra_args: ['--allow-plain-ruby'],
+          cwd: project
+        )
+        begin
+          response = nil
+          Timeout.timeout(8) do
+            TCPSocket.open('127.0.0.1', port) do |sock|
+              JSON.generate(action: 'run', spec: spec).each_char do |chunk|
+                sock.write(chunk)
+                sock.flush
+              end
+              sock.write("\n")
+              response = JSON.parse(sock.gets.to_s)
+            end
+          end
+          expect(response['exit_code']).to eq(0)
+          expect(response['stdout']).to include('1 example, 0 failures')
+        ensure
+          daemon.stop
+        end
+      end
     end
   end
 
@@ -213,6 +319,54 @@ RSpec.describe 'transmute-rspec daemon' do
           expect(response['exit_code']).to eq(0)
           expect(response['stdout']).to eq('pong')
         ensure
+          daemon.stop
+        end
+      end
+    end
+
+    it 'does not wedge when a client connects and sends nothing' do
+      with_temp_project do |project|
+        daemon = spawn_daemon(
+          socket_path: temp_socket('connect-hold'),
+          extra_args: ['--allow-plain-ruby', '--read-timeout', '1'],
+          cwd: project
+        )
+        begin
+          mute_client = UNIXSocket.open(daemon.socket)
+
+          response = nil
+          Timeout.timeout(8) do
+            response = request(daemon.socket, action: 'ping')
+          end
+          expect(response['exit_code']).to eq(0)
+          expect(response['stdout']).to eq('pong')
+
+          expect(daemon.log_contents).to include('read timeout')
+        ensure
+          mute_client.close if mute_client && !mute_client.closed?
+          daemon.stop
+        end
+      end
+    end
+
+    it 'drops a client that floods a newline-less line yet still answers a later ping' do
+      with_temp_project do |project|
+        daemon = spawn_daemon(socket_path: temp_socket('flood'), extra_args: ['--allow-plain-ruby'], cwd: project)
+        begin
+          flood_client = UNIXSocket.open(daemon.socket)
+          flood_client.write('x' * (128 * 1024)) # > MAX_REQUEST_LINE_BYTES, no newline
+          flood_client.flush
+
+          response = nil
+          Timeout.timeout(8) do
+            response = request(daemon.socket, action: 'ping')
+          end
+          expect(response['exit_code']).to eq(0)
+          expect(response['stdout']).to eq('pong')
+
+          expect(daemon.log_contents).to include('request line exceeded')
+        ensure
+          flood_client.close if flood_client && !flood_client.closed?
           daemon.stop
         end
       end

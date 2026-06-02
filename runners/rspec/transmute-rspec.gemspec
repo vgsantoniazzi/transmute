@@ -25,6 +25,8 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   spec.add_runtime_dependency 'rspec-core', '~> 3.0'
+  # Ruby 3.4 dropped erb from default gems; rspec-core requires it at load time.
+  spec.add_runtime_dependency 'erb'
 
   spec.add_development_dependency 'rspec', '~> 3.0'
 end
