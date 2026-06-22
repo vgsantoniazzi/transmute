@@ -11,17 +11,21 @@ Gem::Specification.new do |spec|
   spec.summary       = 'Generate the reverse relationship between code and specs.'
   spec.description   = 'Ruby gem to help you to generate the reverse-coverage relationship between code and tests. The output is a `transmute.sqlite` database that maps every source line to the specs that touch it, used by the transmute engine for targeted mutation testing.'
   spec.homepage      = 'https://github.com/vgsantoniazzi/transmute'
-  spec.license       = 'GPL-3.0'
-  spec.required_ruby_version = Gem::Requirement.new('>= 2.4.0')
+  spec.license       = 'GPL-3.0-only'
+  spec.required_ruby_version = Gem::Requirement.new('>= 3.0.0')
 
   spec.metadata['homepage_uri'] = spec.homepage
-  spec.metadata['source_code_uri'] = 'https://github.com/vgsantoniazzi/transmute'
+  spec.metadata['source_code_uri'] = 'https://github.com/vgsantoniazzi/transmute/tree/main/coverage/rspec'
+  spec.metadata['changelog_uri'] = 'https://github.com/vgsantoniazzi/transmute/blob/main/coverage/rspec/CHANGELOG.md'
+  spec.metadata['allowed_push_host'] = 'https://rubygems.org'
 
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
-    Dir.glob('lib/**/*.rb') + ['README.md', 'transmute-ruby.gemspec']
+    Dir.glob('lib/**/*.rb') + ['README.md', 'CHANGELOG.md', 'transmute-ruby.gemspec']
   end
 
   spec.require_paths = ['lib']
 
-  spec.add_runtime_dependency 'sqlite3', '~> 1.4'
+  spec.add_runtime_dependency 'sqlite3', '>= 1.4', '< 3'
+
+  spec.add_development_dependency 'rspec', '~> 3.0'
 end

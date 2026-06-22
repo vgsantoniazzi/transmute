@@ -1,0 +1,57 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'optparse'
+require 'transmute/rspec'
+
+opts = {
+  socket: Transmute::Rspec::Server::DEFAULT_SOCKET,
+  require: [],
+  fork: false,
+  allow_public: false,
+  allow_plain_ruby: false,
+  read_timeout: Transmute::Rspec::Server::DEFAULT_READ_TIMEOUT
+}
+
+parser = OptionParser.new do |o|
+  o.banner = 'Usage: transmute-rspec serve [options]'
+  o.on('--listen PATH', "Unix socket path or tcp://host:port (default: #{opts[:socket]})") { |v| opts[:socket] = v }
+  o.on('--require PATH', 'Require a file at boot (repeat for multiple)') { |v| opts[:require] << v }
+  o.on('--read-timeout SECONDS', Integer, "Drop a client that connects but sends no complete request line within this many seconds (default: #{opts[:read_timeout]})") { |v| opts[:read_timeout] = v }
+  o.on('--fork', 'Fork per request: each spec runs in a fresh child process so class-level state cannot leak between specs. Eliminates the in-process state-pollution kill-rate gap; adds a few hundred ms of fork overhead per request.') { opts[:fork] = true }
+  o.on('--allow-public', 'Allow binding to a non-loopback TCP address. The daemon executes Kernel.load on any path a client sends; only enable this in trusted single-tenant environments.') { opts[:allow_public] = true }
+  o.on('--allow-plain-ruby', 'Allow in-process mode without Rails. Has known correctness gaps (class re-open accumulates methods, $LOADED_FEATURES not updated by Kernel.load). Use --fork instead unless you know why this matters.') { opts[:allow_plain_ruby] = true }
+  o.on('-h', '--help', 'Show this help') do
+    puts o
+    exit
+  end
+end
+
+cmd = ARGV.shift if ARGV.first && !ARGV.first.start_with?('-')
+parser.parse!(ARGV)
+
+if opts[:read_timeout] <= 0
+  # A zero or negative timeout makes the reader's `remaining <= 0` true on the
+  # first iteration, so every client is dropped before it can speak and the
+  # daemon silently serves nothing. Fail loud at startup instead.
+  warn "transmute-rspec: --read-timeout must be a positive number of seconds (got #{opts[:read_timeout]})"
+  exit 2
+end
+
+case cmd
+when 'serve', nil
+  opts[:require].each { |path| require path }
+  Transmute::Rspec::Server.new(
+    socket_path: opts[:socket],
+    fork: opts[:fork],
+    allow_public: opts[:allow_public],
+    allow_plain_ruby: opts[:allow_plain_ruby],
+    read_timeout: opts[:read_timeout]
+  ).serve
+  # Skip at_exit handlers (rspec-core may have hooks that try to run a default suite).
+  Kernel.exit!(0)
+else
+  warn "transmute-rspec: unknown command '#{cmd}'"
+  warn parser.help
+  exit 2
+end
