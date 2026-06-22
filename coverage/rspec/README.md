@@ -1,24 +1,18 @@
-# Transmute
+# transmute-ruby
 
 Ruby gem that produces the reverse-coverage relationship between code and tests. Writes a `transmute.sqlite` database mapping every source line to the specs that touch it, consumed by the [transmute](https://github.com/vgsantoniazzi/transmute) mutation testing engine.
 
 ## Installation
 
-Add this line to your application's Gemfile:
+`transmute-ruby` 0.3.1 isn't on RubyGems yet (the published 0.1.0 predates the SQLite format), so install it from the repository:
 
 ```ruby
-gem "transmute-ruby"
+gem 'transmute-ruby', github: 'vgsantoniazzi/transmute', glob: 'coverage/rspec/*.gemspec'
 ```
 
 The gem depends on the `sqlite3` gem, which requires `libsqlite3-dev` headers on the build host.
 
-And then execute:
-
-    $ bundle install
-
-Or install it yourself as:
-
-    $ gem install transmute-ruby
+Then run `bundle install`.
 
 ## Usage
 
@@ -50,4 +44,4 @@ Unit specs for the recorder live in `spec/`; run them with `bundle exec rspec`. 
 
 ## License
 
-The gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
+GPL-3.0. See [LICENSE](../../LICENSE).

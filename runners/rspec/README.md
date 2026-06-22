@@ -11,12 +11,12 @@ This gem boots Rails once and accepts spec-run requests over a socket. Two execu
 
 ## Installation
 
-Add both `transmute-ruby` (coverage capture) and `transmute-rspec` (this gem, runner sidecar):
+Neither gem is published to RubyGems yet — install both from the repository:
 
 ```ruby
 group :test do
-  gem 'transmute-ruby'
-  gem 'transmute-rspec'
+  gem 'transmute-ruby', github: 'vgsantoniazzi/transmute', glob: 'coverage/rspec/*.gemspec'
+  gem 'transmute-rspec', github: 'vgsantoniazzi/transmute', glob: 'runners/rspec/*.gemspec'
 end
 ```
 
